@@ -24,6 +24,25 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
+      - name: 테스트 스크립트 만들기
+        run: |
+          cat > smoke.sh <<'SH'
+          set +e
+          adb install -r app.apk
+          adb logcat -c
+          adb shell am start -W -n kr.oddman.voicememo/.MainActivity
+          sleep 8
+          adb shell am start -W -n kr.oddman.voicememo/.RecordActivity
+          sleep 5
+          adb logcat -d -b crash > crash.txt
+          adb logcat -d | grep -E "AndroidRuntime|FATAL|kr.oddman|System.err" | head -150 > app.txt
+          echo "---- crash ----"; cat crash.txt; echo "---- app ----"; cat app.txt
+          msg=$( (cat crash.txt; echo ====; head -60 app.txt) | head -100 | sed 's/%/%25/g' | sed ':a;N;$!ba;s/\n/%0A/g')
+          if [ -s crash.txt ]; then echo "::error title=crash::${msg}"; else echo "::notice title=no-crash::${msg}"; fi
+          exit 0
+          SH
+          chmod +x smoke.sh
+
       - name: 에뮬레이터에서 실행
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -31,15 +50,4 @@ jobs:
           target: google_apis
           arch: x86_64
           disable-animations: true
-          script: |
-            adb install -r app.apk
-            adb logcat -c
-            adb shell am start -W -n kr.oddman.voicememo/.MainActivity || true
-            sleep 8
-            adb shell am start -W -n kr.oddman.voicememo/.RecordActivity || true
-            sleep 5
-            adb logcat -d -b crash > crash.txt || true
-            adb logcat -d | grep -E "AndroidRuntime|FATAL|kr.oddman" | head -150 > app.txt || true
-            echo "---- crash ----"; cat crash.txt; echo "---- app ----"; cat app.txt
-            msg=$( (cat crash.txt; echo ====; head -60 app.txt) | head -90 | sed 's/%/%25/g' | sed ':a;N;$!ba;s/\n/%0A/g')
-            if [ -s crash.txt ]; then echo "::error title=crash::${msg}"; else echo "::notice title=no-crash::${msg}"; fi
+          script: bash ./smoke.sh
