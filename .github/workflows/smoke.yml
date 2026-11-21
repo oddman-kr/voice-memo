@@ -96,6 +96,31 @@ jobs:
           adb shell input keyevent 4
           sleep 2
           shot 10_after_ad
+          # 시나리오 2: 무료 10회 소진 → 녹음 → 정리 대기 카드 → 광고 → 자동 정리 시도
+          adb root >/dev/null 2>&1; sleep 3
+          adb shell am force-stop $P
+          D=/data/data/$P/shared_prefs
+          U=$(adb shell stat -c %u /data/data/$P | tr -d '\r')
+          adb shell "mkdir -p $D"
+          adb shell "echo '<?xml version=\"1.0\" encoding=\"utf-8\" standalone=\"yes\" ?><map><int name=\"freeUsed\" value=\"10\" /></map>' > $D/entitlement.xml"
+          adb shell "echo '<?xml version=\"1.0\" encoding=\"utf-8\" standalone=\"yes\" ?><map><string name=\"key\">TEST-INVALID-KEY</string><boolean name=\"askedNotif\" value=\"true\" /></map>' > $D/cfg.xml"
+          adb shell "chown $U:$U $D $D/*.xml; chmod 660 $D/*.xml"
+          adb shell am start -n $P/.RecordActivity
+          sleep 4
+          adb shell am start -n $P/.RecordActivity --ez toggle true
+          sleep 4
+          adb shell am start -W -n $P/.MainActivity
+          sleep 3
+          shot 11_waiting_card
+          python3 tap.py "정리하기"
+          shot 12_pass_for_waiting
+          python3 tap.py "하루 동안 정리 무제한"
+          sleep 10
+          adb shell input keyevent 4
+          sleep 6
+          shot 13_after_pass
+          python3 tap.py "기록"
+          shot 14_history_after
           adb logcat -d -b crash > crash.txt
           adb logcat -d | grep -E "AndroidRuntime|FATAL|System.err" | head -80 > app.txt
           echo "---- crash ----"; cat crash.txt; echo "---- app ----"; cat app.txt

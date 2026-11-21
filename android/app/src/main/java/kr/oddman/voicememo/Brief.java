@@ -41,7 +41,9 @@ public class Brief {
     public static void fire(Context c) {
         schedule(c);
         List<Db.Item> open = new ArrayList<>(Db.get(c).allOpen());
-        if (open.isEmpty()) return;
+        int waiting = 0;
+        for (Db.Memo m : Db.get(c).memos()) if ("waiting".equals(m.status)) waiting++;
+        if (open.isEmpty() && waiting == 0) return;
         int overdue = 0, today = 0, money = 0;
         List<Db.Item> dated = new ArrayList<>();
         for (Db.Item it : open) {
@@ -58,6 +60,7 @@ public class Brief {
         if (overdue > 0) head.append("지난 것 ").append(overdue);
         if (today > 0) { if (head.length() > 0) head.append(" · "); head.append("오늘까지 ").append(today); }
         if (money > 0) { if (head.length() > 0) head.append(" · "); head.append("보낼 돈 ").append(money); }
+        if (waiting > 0) { if (head.length() > 0) head.append(" · "); head.append("정리 대기 ").append(waiting); }
         if (head.length() == 0) head.append("기한 급한 건 없어요");
 
         StringBuilder body = new StringBuilder();
@@ -72,13 +75,17 @@ public class Brief {
             }
         }
 
+        if (waiting > 0) {
+            if (body.length() > 0) body.append('\n');
+            body.append("• 정리를 기다리는 녹음 ").append(waiting).append("개 · 앱을 열면 정리할 수 있어요");
+        }
         NotificationManager nm = c.getSystemService(NotificationManager.class);
         nm.createNotificationChannel(new NotificationChannel("brief", "아침 요약", NotificationManager.IMPORTANCE_DEFAULT));
         PendingIntent open2 = PendingIntent.getActivity(c, 501, new Intent(c, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP),
                 PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         Notification n = new Notification.Builder(c, "brief")
                 .setSmallIcon(R.drawable.ic_stat)
-                .setContentTitle("오늘 남은 것 " + open.size() + "개 · " + head)
+                .setContentTitle((open.isEmpty() ? "" : "오늘 남은 것 " + open.size() + "개 · ") + head)
                 .setContentText(body.toString().replace('\n', ' '))
                 .setStyle(new Notification.BigTextStyle().bigText(body.toString()))
                 .setContentIntent(open2)
