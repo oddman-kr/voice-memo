@@ -127,16 +127,7 @@ public class Gemini {
                         .put("responseMimeType", "application/json")
                         .put("responseSchema", schema));
 
-        String resp;
-        try {
-            resp = post(model, apiKey, body.toString());
-        } catch (HttpError e) {
-            if (e.code == 404 && !Prefs.FALLBACK_MODEL.equals(model)) {
-                try { resp = post(Prefs.FALLBACK_MODEL, apiKey, body.toString()); }
-                catch (HttpError e2) { throw friendly(e2); }
-            } else throw friendly(e);
-        }
-
+        String resp = generate(meeting ? Prefs.MEETING_MODEL : model, apiKey, body, meeting);
         JSONObject root = new JSONObject(resp);
         JSONArray cands = root.optJSONArray("candidates");
         if (cands == null || cands.length() == 0) throw new Exception("AI가 답을 주지 않았어요. 다시 시도해 주세요");
@@ -193,6 +184,31 @@ public class Gemini {
         return r;
     }
 
+    /** 모델이 없으면(404) 다음 후보로, 생각 설정을 모르면(400) 빼고 다시 */
+    static String generate(String model, String key, JSONObject body, boolean meeting) throws Exception {
+        List<String> models = new ArrayList<>();
+        models.add(model);
+        for (String f : Prefs.FALLBACKS) if (!models.contains(f)) models.add(f);
+        HttpError last = null;
+        for (String m : models) {
+            JSONObject gen = body.getJSONObject("generationConfig");
+            if (meeting) gen.put("thinkingConfig", new JSONObject().put("thinkingLevel", "low"));
+            else gen.remove("thinkingConfig");
+            try {
+                return post(m, key, body.toString());
+            } catch (HttpError e) {
+                last = e;
+                String msg = e.getMessage() == null ? "" : e.getMessage().toLowerCase(Locale.ROOT);
+                if (e.code == 400 && msg.contains("think") && gen.has("thinkingConfig")) {
+                    gen.remove("thinkingConfig");
+                    try { return post(m, key, body.toString()); } catch (HttpError e2) { last = e2; }
+                }
+                if (last.code != 404 && !(last.code == 400 && msg.contains("model"))) throw friendly(last);
+            }
+        }
+        throw friendly(last);
+    }
+
     static String nz(String s) {
         s = s == null ? "" : s.trim();
         return s.isEmpty() || s.equalsIgnoreCase("null") || s.equals("-") ? null : s;
@@ -211,7 +227,7 @@ public class Gemini {
     private static HttpURLConnection open(String url, String key, String method) throws Exception {
         HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
         c.setConnectTimeout(20000);
-        c.setReadTimeout(300000);
+        c.setReadTimeout(method.equals("GET") ? 30000 : 180000);
         c.setRequestMethod(method);
         c.setRequestProperty("x-goog-api-key", key);
         return c;

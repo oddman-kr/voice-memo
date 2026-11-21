@@ -12,7 +12,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class Classifier {
-    private static final ExecutorService EX = Executors.newSingleThreadExecutor();
+    private static final ExecutorService EX = Executors.newFixedThreadPool(3);
     private static final Set<Long> RUNNING = Collections.synchronizedSet(new HashSet<>());
 
     public static boolean isRunning(long id) { return RUNNING.contains(id); }

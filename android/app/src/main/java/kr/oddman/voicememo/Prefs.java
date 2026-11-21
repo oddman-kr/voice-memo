@@ -7,7 +7,12 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class Prefs {
-    public static final String DEFAULT_MODEL = "gemini-flash-latest";
+    /** 짧은 메모: 가장 빠른 Flash-Lite (생각 단계 최소) */
+    public static final String DEFAULT_MODEL = "gemini-flash-lite-latest";
+    /** 회의 요약: 조금 더 똑똑한 Flash */
+    public static final String MEETING_MODEL = "gemini-flash-latest";
+    /** 모델 이름이 없을 때 차례로 시도 */
+    public static final String[] FALLBACKS = {"gemini-3.5-flash-lite", "gemini-2.5-flash-lite", "gemini-2.5-flash"};
     public static final String FALLBACK_MODEL = "gemini-2.5-flash";
     public static final String DEFAULT_CATS = "할 일, 송금, 쿠팡, 다이소, 기타";
     public static final String OTHER = "기타";
@@ -20,7 +25,8 @@ public class Prefs {
 
     public static String model(Context c) {
         String m = sp(c).getString("model", "").trim();
-        return m.isEmpty() ? DEFAULT_MODEL : m;
+        // 예전 기본값(느린 모델)으로 저장된 경우 새 기본값으로
+        return m.isEmpty() || m.equals("gemini-flash-latest") ? DEFAULT_MODEL : m;
     }
 
     public static String catsRaw(Context c) { return sp(c).getString("cats", DEFAULT_CATS); }
