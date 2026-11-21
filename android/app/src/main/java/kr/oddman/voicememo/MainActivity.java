@@ -856,19 +856,6 @@ public class MainActivity extends Activity {
         th.setGravity(Gravity.CENTER_VERTICAL);
         th.setPadding(dp(6), dp(18), 0, dp(8));
         th.addView(tv("녹음 기록", 26, T1, 3), weight());
-        LinearLayout mb = new LinearLayout(this);
-        mb.setGravity(Gravity.CENTER_VERTICAL);
-        mb.setBackground(round(WHITE, 20));
-        mb.setPadding(dp(12), 0, dp(14), 0);
-        ImageView gi = new ImageView(this);
-        gi.setImageResource(R.drawable.ic_group);
-        gi.setColorFilter(T1);
-        mb.addView(gi, lp(dp(18), dp(18)));
-        TextView mt = tv("회의 녹음", 14, T1, 2);
-        mt.setPadding(dp(6), 0, 0, 0);
-        mb.addView(mt);
-        mb.setOnClickListener(v -> startActivity(new Intent(this, RecordActivity.class).putExtra(RecordActivity.EXTRA_MODE, "meeting")));
-        th.addView(mb, lp(-2, dp(40)));
         list.addView(th);
         List<Db.Memo> memos = Db.get(this).memos();
         if (memos.isEmpty()) {
@@ -1358,7 +1345,7 @@ public class MainActivity extends Activity {
                 on ? PackageManager.COMPONENT_ENABLED_STATE_ENABLED : PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
                 PackageManager.DONT_KILL_APP));
         box.addView(qr);
-        TextView qh = tv("• 알림창을 내려 빠른 설정 편집(연필) → '음성 메모' 버튼 추가\n• 앱 아이콘 길게 누르기 → 바로 녹음 · 회의 녹음\n• 잠금화면에서도 빠른 설정 버튼으로 녹음돼요", 13, T3, 0);
+        TextView qh = tv("• 알림창을 내려 빠른 설정 편집(연필) → '음성 메모' 버튼 추가\n• 앱 아이콘 길게 누르기 → 바로 녹음\n• 잠금화면에서도 빠른 설정 버튼으로 녹음돼요", 13, T3, 0);
         qh.setLineSpacing(dp(5), 1f);
         qh.setPadding(dp(4), dp(12), 0, 0);
         box.addView(qh);

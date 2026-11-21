@@ -10,16 +10,4 @@
             android:targetPackage="kr.oddman.voicememo"
             android:targetClass="kr.oddman.voicememo.RecordActivity" />
     </shortcut>
-    <shortcut
-        android:shortcutId="meeting"
-        android:enabled="true"
-        android:icon="@drawable/sc_meeting"
-        android:shortcutShortLabel="@string/sc_meeting">
-        <intent
-            android:action="android.intent.action.VIEW"
-            android:targetPackage="kr.oddman.voicememo"
-            android:targetClass="kr.oddman.voicememo.RecordActivity">
-            <extra android:name="mode" android:value="meeting" />
-        </intent>
-    </shortcut>
 </shortcuts>

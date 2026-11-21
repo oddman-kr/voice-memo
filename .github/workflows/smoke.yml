@@ -70,11 +70,6 @@ jobs:
           shot 04_memo_sheet
           adb shell input keyevent 4
           sleep 1
-          python3 tap.py "회의 녹음"
-          sleep 3
-          shot 05_meeting
-          adb shell am start -n $P/.RecordActivity --ez toggle true
-          sleep 2
           adb shell am start -W -n $P/.MainActivity
           python3 tap.py "정리"
           sleep 1
