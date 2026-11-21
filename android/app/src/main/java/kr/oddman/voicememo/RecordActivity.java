@@ -12,6 +12,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.Gravity;
+import android.view.WindowManager;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -22,10 +23,15 @@ import java.util.Locale;
 
 public class RecordActivity extends Activity {
     public static final String EXTRA_TOGGLE = "toggle";
+    public static final String EXTRA_MODE = "mode";
+
     private final Handler h = new Handler(Looper.getMainLooper());
-    private TextView timer;
+    private TextView timer, title, hint, tap;
     private boolean sawRecording = false;
+    private boolean wantMeeting = false;
+    private boolean cancelArmed = false;
     private long openedAt;
+    private Typeface fR, fM, fS;
 
     private int dp(float v) { return Math.round(v * getResources().getDisplayMetrics().density); }
 
@@ -33,11 +39,13 @@ public class RecordActivity extends Activity {
         @Override
         public void run() {
             if (RecordService.recording) {
-                sawRecording = true;
+                if (!sawRecording) { sawRecording = true; applyMode(RecordService.meeting); }
                 long s = (System.currentTimeMillis() - RecordService.startedAt) / 1000;
-                long left = RecordService.MAX_MS / 1000 - s;
-                timer.setText(String.format(Locale.ROOT, "%d:%02d", s / 60, s % 60));
-                if (left <= 15) timer.setTextColor(0xFFFF5A4E);
+                long left = RecordService.maxMs() / 1000 - s;
+                timer.setText(s >= 3600
+                        ? String.format(Locale.ROOT, "%d:%02d:%02d", s / 3600, (s / 60) % 60, s % 60)
+                        : String.format(Locale.ROOT, "%d:%02d", s / 60, s % 60));
+                timer.setTextColor(left <= 15 ? 0xFFFF5A4E : Color.WHITE);
             } else if (sawRecording || System.currentTimeMillis() - openedAt > 4000) {
                 finish();
                 return;
@@ -47,27 +55,37 @@ public class RecordActivity extends Activity {
     };
 
     @Override
+    @SuppressWarnings("deprecation")
     protected void onCreate(Bundle b) {
         super.onCreate(b);
+        if (Build.VERSION.SDK_INT >= 27) setShowWhenLocked(true);
+        else getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED);
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        fR = getResources().getFont(R.font.pretendard_regular);
+        fM = getResources().getFont(R.font.pretendard_medium);
+        fS = getResources().getFont(R.font.pretendard_semibold);
         openedAt = System.currentTimeMillis();
-        setFinishOnTouchOutside(false);
-        if (RecordService.recording && getIntent().getBooleanExtra(EXTRA_TOGGLE, false)) {
+        wantMeeting = "meeting".equals(getIntent().getStringExtra(EXTRA_MODE));
+
+        if (RecordService.recording && isToggle(getIntent())) {
             send(RecordService.ACT_STOP);
             finish();
             return;
         }
         buildUi();
         if (RecordService.recording) {
+            applyMode(RecordService.meeting);
             h.post(tick);
             return;
         }
+        applyMode(wantMeeting);
         List<String> need = new ArrayList<>();
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED)
             need.add(Manifest.permission.RECORD_AUDIO);
         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-                && !getSharedPreferences("cfg", MODE_PRIVATE).getBoolean("askedNotif", false)) {
+                && !Prefs.sp(this).getBoolean("askedNotif", false)) {
             need.add(Manifest.permission.POST_NOTIFICATIONS);
-            getSharedPreferences("cfg", MODE_PRIVATE).edit().putBoolean("askedNotif", true).apply();
+            Prefs.sp(this).edit().putBoolean("askedNotif", true).apply();
         }
         if (need.isEmpty()) begin();
         else requestPermissions(need.toArray(new String[0]), 1);
@@ -86,21 +104,47 @@ public class RecordActivity extends Activity {
     @Override
     protected void onNewIntent(Intent i) {
         super.onNewIntent(i);
-        if (RecordService.recording && i.getBooleanExtra(EXTRA_TOGGLE, false)) {
+        if (RecordService.recording && isToggle(i)) {
             send(RecordService.ACT_STOP);
             finish();
         }
     }
 
+    /** 위젯·빠른 설정·측면 버튼 아이콘은 한 번 더 누르면 저장 */
+    private static boolean isToggle(Intent i) {
+        if (i.getBooleanExtra(EXTRA_TOGGLE, false)) return true;
+        return i.getComponent() != null && i.getComponent().getClassName().endsWith("QuickRecord");
+    }
+
     private void begin() {
         openedAt = System.currentTimeMillis();
-        Intent i = new Intent(this, RecordService.class).setAction(RecordService.ACT_START);
+        Intent i = new Intent(this, RecordService.class)
+                .setAction(RecordService.ACT_START)
+                .putExtra(RecordService.EXTRA_MEETING, wantMeeting);
         startForegroundService(i);
         h.post(tick);
     }
 
     private void send(String action) {
         startService(new Intent(this, RecordService.class).setAction(action));
+    }
+
+    private TextView text(String s, float sp, int color, Typeface f) {
+        TextView t = new TextView(this);
+        t.setText(s);
+        t.setTextSize(sp);
+        t.setTextColor(color);
+        t.setTypeface(f);
+        t.setGravity(Gravity.CENTER);
+        t.setIncludeFontPadding(false);
+        return t;
+    }
+
+    private void applyMode(boolean meeting) {
+        title.setText(meeting ? "● 회의 녹음 중" : "● 듣고 있어요");
+        hint.setText(meeting ? "휴대폰을 테이블 가운데에 두세요\n화면이 꺼져도 계속 녹음돼요 · 최대 3시간"
+                : "살 것, 할 일, 보낼 돈을 편하게 말해 주세요\n'건전지 샀어'처럼 끝낸 것도 말하면 지워져요");
+        tap.setText(meeting ? "가운데를 누르면 끝내고 요약해요" : "가운데를 누르면 저장돼요 · 최대 3분");
     }
 
     private void buildUi() {
@@ -113,29 +157,17 @@ public class RecordActivity extends Activity {
         root.setGravity(Gravity.CENTER_HORIZONTAL);
         root.setBackgroundColor(bg);
         root.setFitsSystemWindows(true);
-        root.setPadding(dp(24), dp(48), dp(24), dp(28));
+        root.setPadding(dp(24), dp(52), dp(24), dp(28));
 
-        TextView title = new TextView(this);
-        title.setText("● 듣고 있어요");
-        title.setTextColor(0xFFFF5A4E);
-        title.setTextSize(15);
-        title.setTypeface(getResources().getFont(R.font.pretendard_semibold));
+        title = text("", 16, 0xFFFF5A4E, fS);
         root.addView(title);
 
-        timer = new TextView(this);
-        timer.setText("0:00");
-        timer.setTextColor(Color.WHITE);
-        timer.setTextSize(60);
-        timer.setTypeface(getResources().getFont(R.font.pretendard_regular));
-        timer.setPadding(0, dp(6), 0, 0);
+        timer = text("0:00", 64, Color.WHITE, fR);
+        timer.setPadding(0, dp(12), 0, dp(12));
         root.addView(timer);
 
-        TextView hint = new TextView(this);
-        hint.setText("살 것, 할 일, 보낼 돈을 편하게 말해 주세요");
-        hint.setTextColor(0x99FFFFFF);
-        hint.setTextSize(14);
-        hint.setTypeface(getResources().getFont(R.font.pretendard_regular));
-        hint.setGravity(Gravity.CENTER);
+        hint = text("", 15, 0x99FFFFFF, fR);
+        hint.setLineSpacing(dp(5), 1f);
         root.addView(hint);
 
         PulseView pulse = new PulseView(this);
@@ -143,26 +175,26 @@ public class RecordActivity extends Activity {
         pulse.setContentDescription("저장");
         root.addView(pulse, new LinearLayout.LayoutParams(-1, 0, 1));
 
-        TextView tap = new TextView(this);
-        tap.setText("가운데를 누르면 저장돼요 · 최대 3분");
-        tap.setTextColor(0x99FFFFFF);
-        tap.setTextSize(13);
-        tap.setTypeface(getResources().getFont(R.font.pretendard_regular));
+        tap = text("", 14, 0x99FFFFFF, fR);
         root.addView(tap);
 
-        TextView cancel = new TextView(this);
-        cancel.setText("취소");
-        cancel.setTextColor(Color.WHITE);
-        cancel.setTextSize(15);
-        cancel.setTypeface(getResources().getFont(R.font.pretendard_medium));
-        cancel.setGravity(Gravity.CENTER);
+        TextView cancel = text("취소", 16, Color.WHITE, fM);
         GradientDrawable g = new GradientDrawable();
         g.setColor(0x1AFFFFFF);
-        g.setCornerRadius(dp(24));
+        g.setCornerRadius(dp(26));
         cancel.setBackground(g);
-        cancel.setOnClickListener(v -> { send(RecordService.ACT_CANCEL); finish(); });
-        LinearLayout.LayoutParams cl = new LinearLayout.LayoutParams(dp(120), dp(48));
-        cl.topMargin = dp(18);
+        cancel.setOnClickListener(v -> {
+            if (RecordService.meeting && !cancelArmed) {
+                cancelArmed = true;
+                cancel.setText("한 번 더 누르면 취소");
+                h.postDelayed(() -> { cancelArmed = false; cancel.setText("취소"); }, 3000);
+                return;
+            }
+            send(RecordService.ACT_CANCEL);
+            finish();
+        });
+        LinearLayout.LayoutParams cl = new LinearLayout.LayoutParams(dp(190), dp(52));
+        cl.topMargin = dp(20);
         root.addView(cancel, cl);
 
         setContentView(root);

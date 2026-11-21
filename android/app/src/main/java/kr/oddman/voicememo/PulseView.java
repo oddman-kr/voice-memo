@@ -53,7 +53,7 @@ public class PulseView extends View {
         p.setColor(0x26FFFFFF);
         c.drawCircle(cx, cy, ringR, p);
         if (RecordService.recording) {
-            float frac = Math.min(1f, (System.currentTimeMillis() - RecordService.startedAt) / (float) RecordService.MAX_MS);
+            float frac = Math.min(1f, (System.currentTimeMillis() - RecordService.startedAt) / (float) RecordService.maxMs());
             p.setColor(0xCCFFFFFF);
             c.drawArc(arc, -90, 360 * frac, false, p);
         }

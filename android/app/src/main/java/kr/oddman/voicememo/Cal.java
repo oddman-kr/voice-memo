@@ -81,11 +81,14 @@ public class Cal {
             if (it.amount != null) desc.append("\n금액: ").append(it.amount);
             if (it.person != null) desc.append("\n사람: ").append(it.person);
             v.put(CalendarContract.Events.DESCRIPTION, desc.toString());
+            String rrule = Recur.rrule(it.repeat);
+            if (it.place != null) v.put(CalendarContract.Events.EVENT_LOCATION, it.place);
             if (hasTime) {
                 SimpleDateFormat f = new SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.ROOT);
                 long start = f.parse(it.due.substring(0, 16)).getTime();
                 v.put(CalendarContract.Events.DTSTART, start);
-                v.put(CalendarContract.Events.DTEND, start + 30 * 60 * 1000L);
+                if (rrule != null) v.put(CalendarContract.Events.DURATION, "PT30M");
+                else v.put(CalendarContract.Events.DTEND, start + 30 * 60 * 1000L);
                 v.put(CalendarContract.Events.EVENT_TIMEZONE, TimeZone.getDefault().getID());
                 v.put(CalendarContract.Events.HAS_ALARM, 1);
             } else {
@@ -93,10 +96,12 @@ public class Cal {
                 f.setTimeZone(TimeZone.getTimeZone("UTC"));
                 Date d = f.parse(it.due.substring(0, 10));
                 v.put(CalendarContract.Events.DTSTART, d.getTime());
-                v.put(CalendarContract.Events.DTEND, d.getTime() + 24 * 60 * 60 * 1000L);
+                if (rrule != null) v.put(CalendarContract.Events.DURATION, "P1D");
+                else v.put(CalendarContract.Events.DTEND, d.getTime() + 24 * 60 * 60 * 1000L);
                 v.put(CalendarContract.Events.EVENT_TIMEZONE, "UTC");
                 v.put(CalendarContract.Events.ALL_DAY, 1);
             }
+            if (rrule != null) v.put(CalendarContract.Events.RRULE, rrule);
             ContentResolver cr = c.getContentResolver();
             Uri u = cr.insert(CalendarContract.Events.CONTENT_URI, v);
             if (u == null) return 0;

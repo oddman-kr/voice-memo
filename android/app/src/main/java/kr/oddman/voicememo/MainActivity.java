@@ -3,6 +3,11 @@ package kr.oddman.voicememo;
 import android.Manifest;
 import android.app.Activity;
 import android.app.Dialog;
+import android.app.TimePickerDialog;
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.ComponentName;
+import android.content.pm.PackageManager;
 import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Paint;
@@ -22,6 +27,7 @@ import android.view.Window;
 import android.view.WindowInsetsController;
 import android.view.WindowManager;
 import android.widget.EditText;
+import android.widget.HorizontalScrollView;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -41,10 +47,14 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.function.IntConsumer;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class MainActivity extends Activity {
-    static final int HOME = 0, CAT = 1, HIST = 2;
-    static final int REQ_CAL = 7;
+    static final int HOME = 0, CAT = 1, HIST = 2, PERSON = 3;
+    static final int REQ_CAL = 7, REQ_LOC = 8, REQ_BG = 9;
+    static final Pattern PHONE = Pattern.compile("0\\d{1,2}-?\\d{3,4}-?\\d{4}");
+    private String pendingPlaceCat = null;
 
     static final int BG = 0xFFF2F3F5, WHITE = 0xFFFFFFFF, T1 = 0xFF191F28, T2 = 0xFF4E5968, T3 = 0xFF8B95A1,
             T4 = 0xFFB0B8C1, DIV = 0xFFF2F3F5, NAVLINE = 0xFFEEF0F2, CHECK = 0xFFD1D6DB,
@@ -197,6 +207,7 @@ public class MainActivity extends Activity {
 
     static String dur(long ms) {
         long s = Math.max(1, Math.round(ms / 1000.0));
+        if (s >= 3600) return String.format(Locale.ROOT, "%d:%02d:%02d", s / 3600, (s / 60) % 60, s % 60);
         return String.format(Locale.ROOT, "%d:%02d", s / 60, s % 60);
     }
 
@@ -292,6 +303,18 @@ public class MainActivity extends Activity {
         frame.addView(mic, ml);
 
         setContentView(frame);
+        handleIntent(getIntent());
+    }
+
+    @Override
+    protected void onNewIntent(Intent i) {
+        super.onNewIntent(i);
+        handleIntent(i);
+    }
+
+    private void handleIntent(Intent i) {
+        String cat = i == null ? null : i.getStringExtra("cat");
+        if (cat != null) { screen = CAT; catName = cat; i.removeExtra("cat"); }
     }
 
     private LinearLayout navItem(int icon, String label, Runnable onClick) {
@@ -324,7 +347,7 @@ public class MainActivity extends Activity {
     @Override
     @SuppressWarnings("deprecation")
     public void onBackPressed() {
-        if (screen == CAT) go(HOME, null);
+        if (screen == CAT || screen == PERSON) go(HOME, null);
         else if (screen == HIST) go(HOME, null);
         else super.onBackPressed();
     }
@@ -345,6 +368,8 @@ public class MainActivity extends Activity {
                 if ("pending".equals(m.status) || "nokey".equals(m.status)) Classifier.enqueue(this, m.id);
         }
         MemoWidget.updateAll(this);
+        Brief.schedule(this);
+        Places.registerAll(this);
         refresh();
     }
 
@@ -360,6 +385,7 @@ public class MainActivity extends Activity {
         paintNav(navHist, screen == HIST);
         list.removeAllViews();
         if (screen == CAT && catName != null) buildCat(catName);
+        else if (screen == PERSON && catName != null) buildPerson(catName);
         else if (screen == HIST) buildHist();
         else { screen = HOME; buildHome(); }
     }
@@ -390,6 +416,7 @@ public class MainActivity extends Activity {
 
         if (Prefs.key(this).isEmpty()) list.addView(keyBanner());
         addRunningNotice();
+        addPeopleChips();
 
         if (open.isEmpty()) {
             boolean anyMemo = !Db.get(this).memos().isEmpty();
@@ -504,6 +531,145 @@ public class MainActivity extends Activity {
         list.addView(c);
     }
 
+    private void addPeopleChips() {
+        Map<String, Integer> people = Db.get(this).openPeople();
+        if (people.isEmpty()) return;
+        HorizontalScrollView hs = new HorizontalScrollView(this);
+        hs.setHorizontalScrollBarEnabled(false);
+        LinearLayout row = new LinearLayout(this);
+        for (Map.Entry<String, Integer> e : people.entrySet()) {
+            String name = e.getKey();
+            LinearLayout chip = new LinearLayout(this);
+            chip.setGravity(Gravity.CENTER_VERTICAL);
+            chip.setBackground(round(WHITE, 18));
+            chip.setPadding(dp(8), 0, dp(14), 0);
+            chip.addView(iconBox(R.drawable.ic_person, T3, BG, 24, 14, -1));
+            TextView t = tv(name, 14, T1, 2);
+            t.setPadding(dp(7), 0, 0, 0);
+            chip.addView(t);
+            TextView n = tv(String.valueOf(e.getValue()), 13, T3, 2);
+            n.setPadding(dp(5), 0, 0, 0);
+            chip.addView(n);
+            chip.setOnClickListener(v -> go(PERSON, name));
+            LinearLayout.LayoutParams l = lp(-2, dp(38));
+            l.rightMargin = dp(8);
+            row.addView(chip, l);
+        }
+        hs.addView(row);
+        LinearLayout.LayoutParams hl = lp(-1, -2);
+        hl.bottomMargin = dp(14);
+        list.addView(hs, hl);
+    }
+
+    private void buildPerson(String person) {
+        list.addView(backRow());
+        LinearLayout h = new LinearLayout(this);
+        h.setGravity(Gravity.CENTER_VERTICAL);
+        h.setPadding(dp(6), 0, 0, dp(20));
+        h.addView(iconBox(R.drawable.ic_person, T2, WHITE, 44, 24, -1));
+        LinearLayout hc = new LinearLayout(this);
+        hc.setOrientation(LinearLayout.VERTICAL);
+        hc.setPadding(dp(14), 0, 0, 0);
+        hc.addView(tv(person, 24, T1, 3));
+        List<Db.Item> items = Db.get(this).itemsOfPerson(person);
+        List<Db.Item> open = new ArrayList<>(), done = new ArrayList<>();
+        for (Db.Item it : items) (it.done ? done : open).add(it);
+        sortItems(open);
+        TextView sub = tv(open.isEmpty() ? "남은 게 없어요" : "남은 것 " + open.size() + "개", 14, T3, 1);
+        sub.setPadding(0, dp(6), 0, 0);
+        hc.addView(sub);
+        h.addView(hc);
+        list.addView(h);
+        if (!open.isEmpty()) list.addView(mixedRows(open));
+        if (!done.isEmpty()) {
+            list.addView(section("완료 " + done.size()));
+            list.addView(mixedRows(done));
+        }
+    }
+
+    /** 여러 카테고리가 섞인 목록 (카테고리 아이콘이 붙음) */
+    private View mixedRows(List<Db.Item> items) {
+        LinearLayout g = group();
+        g.setPadding(0, dp(4), 0, dp(4));
+        for (int i = 0; i < items.size(); i++) {
+            if (i > 0) g.addView(divider(56));
+            Db.Item it = items.get(i);
+            g.addView(itemRow(it, catColors(it.category), true));
+        }
+        return g;
+    }
+
+    private View backRow() {
+        LinearLayout back = new LinearLayout(this);
+        back.setGravity(Gravity.CENTER_VERTICAL);
+        back.setPadding(0, dp(2), dp(12), dp(14));
+        ImageView bi = new ImageView(this);
+        bi.setImageResource(R.drawable.ic_back);
+        bi.setColorFilter(T2);
+        back.addView(bi, lp(dp(24), dp(24)));
+        back.addView(tv("정리", 16, T2, 1));
+        back.setOnClickListener(v -> go(HOME, null));
+        back.setLayoutParams(lp(-2, -2));
+        return back;
+    }
+
+    // ---------- 바로 실행 ----------
+
+    private static class QuickAct {
+        final String label;
+        final int icon;
+        final Runnable run;
+        QuickAct(String label, int icon, Runnable run) { this.label = label; this.icon = icon; this.run = run; }
+    }
+
+    private List<QuickAct> quickActs(Db.Item it) {
+        List<QuickAct> out = new ArrayList<>();
+        if ("쿠팡".equals(it.category)) out.add(new QuickAct("쿠팡에서 찾기", R.drawable.ic_search, () -> openCoupang(it.text)));
+        if ("송금".equals(it.category)) out.add(new QuickAct("송금하기", R.drawable.ic_send, () -> sendMoney(it)));
+        Matcher m = PHONE.matcher(it.text + " " + (it.place == null ? "" : it.place));
+        if (m.find()) {
+            String num = m.group();
+            out.add(new QuickAct("전화", R.drawable.ic_phone, () -> safeStart(new Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + num)))));
+        }
+        if (it.place != null) out.add(new QuickAct("지도", R.drawable.ic_place, () ->
+                safeStart(new Intent(Intent.ACTION_VIEW, Uri.parse("geo:0,0?q=" + Uri.encode(it.place))))));
+        return out;
+    }
+
+    private void safeStart(Intent i) {
+        try { startActivity(i); }
+        catch (Exception e) { Toast.makeText(this, "열 수 있는 앱이 없어요", Toast.LENGTH_SHORT).show(); }
+    }
+
+    private void openCoupang(String q) {
+        safeStart(new Intent(Intent.ACTION_VIEW, Uri.parse("https://www.coupang.com/np/search?q=" + Uri.encode(q))));
+    }
+
+    private void sendMoney(Db.Item it) {
+        if (it.amount != null) {
+            String digits = it.amount.replaceAll("[^0-9]", "");
+            ClipboardManager cm = getSystemService(ClipboardManager.class);
+            if (cm != null && !digits.isEmpty()) {
+                cm.setPrimaryClip(ClipData.newPlainText("금액", digits));
+                Toast.makeText(this, it.amount + " 복사했어요", Toast.LENGTH_SHORT).show();
+            }
+        }
+        sheetMenu("어느 앱으로 보낼까요?", new String[]{"토스", "카카오페이"}, new int[]{T1, T1}, null, w -> {
+            if (w == 0) launchApp("viva.republica.toss", "supertoss://");
+            else launchApp("com.kakao.talk", "kakaotalk://kakaopay/home");
+        });
+    }
+
+    private void launchApp(String pkg, String deepLink) {
+        try {
+            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(deepLink)));
+            return;
+        } catch (Exception ignored) { }
+        Intent li = getPackageManager().getLaunchIntentForPackage(pkg);
+        if (li != null) safeStart(li);
+        else safeStart(new Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=" + pkg)));
+    }
+
     // ---------- 항목 줄 ----------
 
     private View itemRow(Db.Item it, int[] cc, boolean detail) {
@@ -573,6 +739,17 @@ public class MainActivity extends Activity {
             }
             col.addView(mr);
         }
+        if (!it.done) {
+            List<QuickAct> qa = quickActs(it);
+            String rep = Recur.label(it.repeat);
+            if (!qa.isEmpty() || rep != null) {
+                LinearLayout ar = new LinearLayout(this);
+                ar.setPadding(0, dp(8), 0, 0);
+                if (rep != null) ar.addView(chipLabel(R.drawable.ic_repeat, rep + " 반복", false, null));
+                for (QuickAct q : qa) ar.addView(chipLabel(q.icon, q.label, true, q.run));
+                col.addView(ar);
+            }
+        }
         r.addView(col, weight());
 
         if (it.amount != null) {
@@ -584,8 +761,28 @@ public class MainActivity extends Activity {
         return r;
     }
 
+    private View chipLabel(int icon, String label, boolean action, Runnable run) {
+        LinearLayout c = new LinearLayout(this);
+        c.setGravity(Gravity.CENTER_VERTICAL);
+        c.setBackground(round(action ? 0xFFE8F3FF : BG, 8));
+        c.setPadding(dp(8), dp(5), dp(10), dp(5));
+        int col = action ? 0xFF1B64DA : T3;
+        ImageView iv = new ImageView(this);
+        iv.setImageResource(icon);
+        iv.setColorFilter(col);
+        c.addView(iv, lp(dp(13), dp(13)));
+        TextView t = tv(label, 12, col, 2);
+        t.setPadding(dp(4), 0, 0, 0);
+        c.addView(t);
+        if (run != null) c.setOnClickListener(v -> run.run());
+        LinearLayout.LayoutParams l = lp(-2, -2);
+        l.rightMargin = dp(6);
+        c.setLayoutParams(l);
+        return c;
+    }
+
     private void toggleDone(Db.Item it) {
-        Db.get(this).setDone(it.id, !it.done);
+        Ops.setDone(this, it, !it.done);
         refresh();
     }
 
@@ -593,16 +790,7 @@ public class MainActivity extends Activity {
 
     private void buildCat(String cat) {
         int[] cc = catColors(cat);
-        LinearLayout back = new LinearLayout(this);
-        back.setGravity(Gravity.CENTER_VERTICAL);
-        back.setPadding(dp(0), dp(2), dp(12), dp(14));
-        ImageView bi = new ImageView(this);
-        bi.setImageResource(R.drawable.ic_back);
-        bi.setColorFilter(T2);
-        back.addView(bi, lp(dp(24), dp(24)));
-        back.addView(tv("정리", 16, T2, 1));
-        back.setOnClickListener(v -> go(HOME, null));
-        list.addView(back, lp(-2, -2));
+        list.addView(backRow());
 
         List<Db.Item> items = Db.get(this).items(cat);
         List<Db.Item> open = new ArrayList<>(), done = new ArrayList<>();
@@ -621,7 +809,13 @@ public class MainActivity extends Activity {
         TextView sub = tv(open.isEmpty() ? "남은 게 없어요" : "남은 것 " + open.size() + "개", 14, T3, 1);
         sub.setPadding(0, dp(6), 0, 0);
         hc.addView(sub);
-        h.addView(hc);
+        h.addView(hc, weight());
+        if (!"송금".equals(cat)) {
+            int placeCount = 0;
+            for (Db.Place pl : Db.get(this).places()) if (cat.equals(pl.category)) placeCount++;
+            View pin = chipLabel(R.drawable.ic_place, placeCount > 0 ? "장소 " + placeCount + "곳" : "근처 알림", true, () -> placesSheet(cat));
+            h.addView(pin);
+        }
         list.addView(h);
 
         if (items.isEmpty()) {
@@ -648,9 +842,24 @@ public class MainActivity extends Activity {
     // ---------- 녹음 기록 ----------
 
     private void buildHist() {
-        TextView title = tv("녹음 기록", 26, T1, 3);
-        title.setPadding(dp(6), dp(18), 0, dp(8));
-        list.addView(title);
+        LinearLayout th = new LinearLayout(this);
+        th.setGravity(Gravity.CENTER_VERTICAL);
+        th.setPadding(dp(6), dp(18), 0, dp(8));
+        th.addView(tv("녹음 기록", 26, T1, 3), weight());
+        LinearLayout mb = new LinearLayout(this);
+        mb.setGravity(Gravity.CENTER_VERTICAL);
+        mb.setBackground(round(WHITE, 20));
+        mb.setPadding(dp(12), 0, dp(14), 0);
+        ImageView gi = new ImageView(this);
+        gi.setImageResource(R.drawable.ic_group);
+        gi.setColorFilter(T1);
+        mb.addView(gi, lp(dp(18), dp(18)));
+        TextView mt = tv("회의 녹음", 14, T1, 2);
+        mt.setPadding(dp(6), 0, 0, 0);
+        mb.addView(mt);
+        mb.setOnClickListener(v -> startActivity(new Intent(this, RecordActivity.class).putExtra(RecordActivity.EXTRA_MODE, "meeting")));
+        th.addView(mb, lp(-2, dp(40)));
+        list.addView(th);
         List<Db.Memo> memos = Db.get(this).memos();
         if (memos.isEmpty()) {
             empty(R.drawable.ic_history, "아직 녹음이 없어요", "가운데 버튼을 누르고 말해 보세요.");
@@ -705,7 +914,9 @@ public class MainActivity extends Activity {
         col.setPadding(dp(12), dp(1), 0, 0);
         String head;
         int headColor = T1;
-        if (m.transcript != null && !m.transcript.isEmpty()) head = m.transcript;
+        if (m.meeting() && m.title != null) head = m.title;
+        else if (m.transcript != null && !m.transcript.isEmpty()) head = m.transcript;
+        else if (m.meeting() && !error && !running) { head = "회의 녹음"; headColor = T2; }
         else if (error) { head = "정리하지 못했어요"; headColor = T2; }
         else if (running) { head = "정리하고 있어요"; headColor = T2; }
         else { head = "아직 정리 전이에요"; headColor = T2; }
@@ -721,7 +932,8 @@ public class MainActivity extends Activity {
         else if ("nokey".equals(m.status)) tail = "API 키를 넣으면 정리돼요";
         else if ("pending".equals(m.status)) tail = "정리 대기 중";
         else tail = count > 0 ? count + "개 정리됨" : "정리할 내용 없음";
-        TextView mt = tv(clock(m.created) + " · " + dur(m.duration) + " · " + tail, 13, error ? RED : T3, 0);
+        if (m.actions != null && !error && !running) tail += " · " + m.actions.split("\n").length + "개 처리";
+        TextView mt = tv((m.meeting() ? "회의 · " : "") + clock(m.created) + " · " + dur(m.duration) + " · " + tail, 13, error ? RED : T3, 0);
         mt.setPadding(0, dp(6), 0, 0);
         col.addView(mt);
         r.addView(col, weight());
@@ -738,25 +950,57 @@ public class MainActivity extends Activity {
     private void memoSheet(Db.Memo m) {
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
-        box.addView(tv(dayName(m.created) + " " + clock(m.created), 20, T1, 3));
-        TextView d = tv(dur(m.duration) + " 녹음", 14, T3, 0);
+        String head = m.meeting() ? (m.title != null ? m.title : "회의 녹음") : dayName(m.created) + " " + clock(m.created);
+        box.addView(tv(head, 20, T1, 3));
+        TextView d = tv((m.meeting() ? "회의 · " + dayName(m.created) + " " + clock(m.created) + " · " : "") + dur(m.duration) + " 녹음", 14, T3, 0);
         d.setPadding(0, dp(6), 0, 0);
         box.addView(d);
 
+        if (m.summary != null) {
+            TextView sm = tv(m.summary, 15, T1, 0);
+            sm.setLineSpacing(dp(6), 1f);
+            sm.setTextIsSelectable(true);
+            sm.setPadding(dp(16), dp(14), dp(16), dp(14));
+            sm.setBackground(round(0xFFE8F3FF, 16));
+            LinearLayout.LayoutParams sl = lp(-1, -2);
+            sl.topMargin = dp(16);
+            box.addView(sm, sl);
+        }
+
+        if (m.actions != null) {
+            TextView ah = tv("말로 처리한 것", 14, T3, 2);
+            ah.setPadding(dp(2), dp(20), 0, dp(8));
+            box.addView(ah);
+            TextView at = tv(m.actions, 15, T2, 1);
+            at.setLineSpacing(dp(6), 1f);
+            box.addView(at);
+        }
+
         if (m.transcript != null && !m.transcript.isEmpty()) {
+            if (m.meeting()) {
+                TextView th = tv("전체 받아쓰기", 14, T3, 2);
+                th.setPadding(dp(2), dp(20), 0, 0);
+                box.addView(th);
+            }
             TextView tr = tv(m.transcript, 16, T1, 0);
             tr.setLineSpacing(dp(6), 1f);
-            tr.setTextIsSelectable(true);
             tr.setPadding(dp(16), dp(14), dp(16), dp(14));
             tr.setBackground(round(BG, 16));
+            if (m.meeting()) {
+                tr.setMaxLines(8);
+                tr.setEllipsize(TextUtils.TruncateAt.END);
+                tr.setOnClickListener(v -> { tr.setMaxLines(Integer.MAX_VALUE); tr.setEllipsize(null); tr.setTextIsSelectable(true); });
+            } else {
+                tr.setTextIsSelectable(true);
+            }
             LinearLayout.LayoutParams tl = lp(-1, -2);
-            tl.topMargin = dp(16);
+            tl.topMargin = dp(m.meeting() ? 10 : 16);
             box.addView(tr, tl);
         }
 
         List<Db.Item> items = Db.get(this).itemsOfMemo(m.id);
         if (!items.isEmpty()) {
-            TextView s = tv("정리한 것", 14, T3, 2);
+            TextView s = tv(m.meeting() ? "회의에서 나온 할 일" : "정리한 것", 14, T3, 2);
             s.setPadding(dp(2), dp(20), 0, dp(4));
             box.addView(s);
             for (Db.Item it : items) {
@@ -815,6 +1059,7 @@ public class MainActivity extends Activity {
         List<Integer> colors = new ArrayList<>();
         labels.add(it.done ? "다시 남은 것으로" : "완료로 표시"); colors.add(T1);
         acts.add(() -> toggleDone(it));
+        if (!it.done) for (QuickAct q : quickActs(it)) { labels.add(q.label); colors.add(T1); acts.add(q.run); }
         if (src != null) {
             labels.add(playingMemo == src.id ? "듣기 멈추기" : "원래 녹음 듣기"); colors.add(T1);
             acts.add(() -> togglePlay(src));
@@ -848,8 +1093,7 @@ public class MainActivity extends Activity {
         acts.add(() -> editItem(it));
         labels.add("삭제"); colors.add(RED);
         acts.add(() -> {
-            Cal.deleteEvent(this, it.eventId);
-            Db.get(this).deleteItem(it.id);
+            Ops.delete(this, it);
             refresh();
         });
 
@@ -1056,6 +1300,57 @@ public class MainActivity extends Activity {
             box.addView(pick);
         }
 
+        // 아침 요약
+        box.addView(fieldLabel("아침 요약 알림"));
+        LinearLayout br = settingRow("매일 남은 것 알려주기", Prefs.briefOn(this) ? "매일 " + hm(Prefs.briefMinutes(this)) + " · 눌러서 시간 바꾸기" : "꺼져 있어요");
+        Switch bsw = new Switch(this);
+        bsw.setChecked(Prefs.briefOn(this));
+        br.addView(bsw);
+        bsw.setOnCheckedChangeListener((b, on) -> {
+            Prefs.setBrief(this, on, Prefs.briefMinutes(this));
+            Brief.schedule(this);
+            ref[0].dismiss();
+            openSettings();
+        });
+        br.setOnClickListener(v -> {
+            int mins = Prefs.briefMinutes(this);
+            ref[0].dismiss();
+            new TimePickerDialog(this, (tp, hh, mm) -> {
+                Prefs.setBrief(this, true, hh * 60 + mm);
+                Brief.schedule(this);
+                openSettings();
+            }, mins / 60, mins % 60, false).show();
+        });
+        box.addView(br);
+
+        // 장소 알림
+        box.addView(fieldLabel("장소 알림"));
+        List<Db.Place> places = Db.get(this).places();
+        LinearLayout pr = settingRow("등록한 장소 " + places.size() + "곳", places.isEmpty() ? "자주 가는 가게에서 등록해 두면 근처에서 알려줘요" : placeNames(places));
+        ImageView pch = new ImageView(this);
+        pch.setImageResource(R.drawable.ic_chevron);
+        pch.setColorFilter(T4);
+        pr.addView(pch, lp(dp(20), dp(20)));
+        pr.setOnClickListener(v -> { ref[0].dismiss(); placesSheet(null); });
+        box.addView(pr);
+
+        // 빠른 녹음
+        box.addView(fieldLabel("빠른 녹음"));
+        ComponentName alias = new ComponentName(this, getPackageName() + ".QuickRecord");
+        boolean aliasOn = getPackageManager().getComponentEnabledSetting(alias) == PackageManager.COMPONENT_ENABLED_STATE_ENABLED;
+        LinearLayout qr = settingRow("'바로 녹음' 아이콘 만들기", "갤럭시 측면 버튼 → '앱 열기'에서 이 아이콘을 고르면\n버튼 두 번 누르기로 바로 녹음돼요");
+        Switch qsw = new Switch(this);
+        qsw.setChecked(aliasOn);
+        qr.addView(qsw);
+        qsw.setOnCheckedChangeListener((b, on) -> getPackageManager().setComponentEnabledSetting(alias,
+                on ? PackageManager.COMPONENT_ENABLED_STATE_ENABLED : PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                PackageManager.DONT_KILL_APP));
+        box.addView(qr);
+        TextView qh = tv("• 알림창을 내려 빠른 설정 편집(연필) → '음성 메모' 버튼 추가\n• 앱 아이콘 길게 누르기 → 바로 녹음 · 회의 녹음\n• 잠금화면에서도 빠른 설정 버튼으로 녹음돼요", 13, T3, 0);
+        qh.setLineSpacing(dp(5), 1f);
+        qh.setPadding(dp(4), dp(12), 0, 0);
+        box.addView(qh);
+
         box.addView(fieldLabel("나눌 목록 (쉼표로 구분, '기타'는 항상 마지막)"));
         EditText cats = input(Prefs.catsRaw(this), Prefs.DEFAULT_CATS);
         box.addView(cats);
@@ -1088,8 +1383,180 @@ public class MainActivity extends Activity {
             ref[0].getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
     }
 
+    private LinearLayout settingRow(String title, String sub) {
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setBackground(round(BG, 14));
+        row.setPadding(dp(16), dp(14), dp(12), dp(14));
+        LinearLayout col = new LinearLayout(this);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.addView(tv(title, 16, T1, 1));
+        TextView st = tv(sub, 13, T3, 0);
+        st.setLineSpacing(dp(3), 1f);
+        st.setPadding(0, dp(5), 0, 0);
+        col.addView(st);
+        row.addView(col, weight());
+        return row;
+    }
+
+    static String hm(int minutes) {
+        int h = minutes / 60, m = minutes % 60;
+        return (h < 12 ? "오전 " : "오후 ") + (h % 12 == 0 ? 12 : h % 12) + (m == 0 ? "시" : ":" + String.format(Locale.ROOT, "%02d", m));
+    }
+
+    private static String placeNames(List<Db.Place> places) {
+        StringBuilder sb = new StringBuilder();
+        for (Db.Place p : places) { if (sb.length() > 0) sb.append(", "); sb.append(p.name); }
+        return sb.toString();
+    }
+
+    /** 장소 목록 시트. cat이 있으면 그 카테고리만 보여주고 바로 추가할 수 있어요 */
+    private void placesSheet(String cat) {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.addView(tv(cat == null ? "장소 알림" : cat + " 근처 알림", 22, T1, 3));
+        TextView d = tv("등록한 곳 150m 안에 들어가면 그 목록의 남은 것을 알려줘요. 가게 안에서 '지금 위치 추가'를 누르세요.", 14, T3, 0);
+        d.setLineSpacing(dp(4), 1f);
+        d.setPadding(0, dp(8), 0, dp(14));
+        box.addView(d);
+        final Dialog[] ref = new Dialog[1];
+        for (Db.Place p : Db.get(this).places()) {
+            if (cat != null && !cat.equals(p.category)) continue;
+            int[] cc = catColors(p.category);
+            LinearLayout row = new LinearLayout(this);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.addView(iconBox(R.drawable.ic_place, cc[0], cc[1], 30, 17, 10));
+            LinearLayout col = new LinearLayout(this);
+            col.setOrientation(LinearLayout.VERTICAL);
+            col.setPadding(dp(12), 0, 0, 0);
+            col.addView(tv(p.name, 16, T1, 1));
+            TextView pc = tv(p.category, 13, T3, 0);
+            pc.setPadding(0, dp(4), 0, 0);
+            col.addView(pc);
+            row.addView(col, weight());
+            TextView del = tv("삭제", 14, RED, 2);
+            del.setPadding(dp(12), dp(10), dp(4), dp(10));
+            del.setOnClickListener(v -> {
+                Places.unregister(this, p.id);
+                Db.get(this).deletePlace(p.id);
+                ref[0].dismiss();
+                placesSheet(cat);
+            });
+            row.addView(del);
+            box.addView(row, lp(-1, dp(60)));
+        }
+        if (!Places.hasBackground(this) && !Db.get(this).places().isEmpty()) {
+            TextView warn = tv("위치 권한이 '항상 허용'이 아니면 앱을 닫았을 때 알림이 안 와요. 눌러서 바꾸기", 13, ORANGE, 2);
+            warn.setLineSpacing(dp(3), 1f);
+            warn.setPadding(0, dp(10), 0, 0);
+            warn.setOnClickListener(v -> { ref[0].dismiss(); askBackground(); });
+            box.addView(warn);
+        }
+        TextView add = button("지금 위치 추가", true);
+        add.setOnClickListener(v -> {
+            ref[0].dismiss();
+            if (cat != null) addPlaceFlow(cat);
+            else {
+                List<String> cats = allCats();
+                String[] arr = cats.toArray(new String[0]);
+                int[] icons = new int[arr.length];
+                int[] cols = new int[arr.length];
+                for (int i = 0; i < arr.length; i++) { icons[i] = catIcon(arr[i]); cols[i] = catColors(arr[i])[0]; }
+                sheetMenu("어떤 목록의 장소인가요?", arr, cols, icons, w -> addPlaceFlow(arr[w]));
+            }
+        });
+        LinearLayout.LayoutParams al = lp(-1, dp(54));
+        al.topMargin = dp(16);
+        box.addView(add, al);
+        ScrollView sv = new ScrollView(this);
+        sv.addView(box);
+        ref[0] = sheet(sv);
+    }
+
+    private void addPlaceFlow(String cat) {
+        if (!Places.hasFine(this)) {
+            pendingPlaceCat = cat;
+            requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION}, REQ_LOC);
+            return;
+        }
+        Toast.makeText(this, "지금 위치를 확인하고 있어요", Toast.LENGTH_SHORT).show();
+        Places.current(this, loc -> {
+            if (loc == null) {
+                Toast.makeText(this, "위치를 찾지 못했어요. 위치(GPS)가 켜져 있는지 확인해 주세요", Toast.LENGTH_LONG).show();
+                return;
+            }
+            LinearLayout box = new LinearLayout(this);
+            box.setOrientation(LinearLayout.VERTICAL);
+            box.addView(tv("이 장소 이름", 20, T1, 3));
+            EditText e = input(cat + " ", "예: 다이소 신림점");
+            e.setSingleLine(true);
+            e.setSelection(e.getText().length());
+            LinearLayout.LayoutParams el = lp(-1, -2);
+            el.topMargin = dp(16);
+            el.bottomMargin = dp(18);
+            box.addView(e, el);
+            final Dialog[] ref = new Dialog[1];
+            TextView save = button("저장", true);
+            save.setOnClickListener(v -> {
+                String name = e.getText().toString().trim();
+                if (name.isEmpty()) name = cat;
+                Db.get(this).addPlace(cat, name, loc.getLatitude(), loc.getLongitude());
+                Places.registerAll(this);
+                ref[0].dismiss();
+                Toast.makeText(this, name + " 등록했어요", Toast.LENGTH_SHORT).show();
+                if (!Places.hasBackground(this)) askBackground();
+                else refresh();
+            });
+            box.addView(save, lp(-1, dp(54)));
+            ref[0] = sheet(box);
+            if (ref[0].getWindow() != null)
+                ref[0].getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE | WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+            e.requestFocus();
+        });
+    }
+
+    private void askBackground() {
+        if (Build.VERSION.SDK_INT < 29) return;
+        confirmPlain("위치를 '항상 허용'으로 바꿔 주세요",
+                "앱을 닫아 둔 상태에서도 가게 근처에서 알림을 받으려면 필요해요. 다음 화면에서 '항상 허용'을 골라 주세요.",
+                "설정하기", () -> requestPermissions(new String[]{Manifest.permission.ACCESS_BACKGROUND_LOCATION}, REQ_BG));
+    }
+
+    private void confirmPlain(String title, String body, String yes, Runnable onYes) {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.addView(tv(title, 20, T1, 3));
+        TextView b = tv(body, 15, T3, 0);
+        b.setLineSpacing(dp(4), 1f);
+        b.setPadding(0, dp(10), 0, dp(24));
+        box.addView(b);
+        final Dialog[] ref = new Dialog[1];
+        LinearLayout row = new LinearLayout(this);
+        TextView no = button("나중에", false);
+        no.setOnClickListener(v -> ref[0].dismiss());
+        row.addView(no, new LinearLayout.LayoutParams(0, dp(54), 1));
+        TextView ok = button(yes, true);
+        ok.setOnClickListener(v -> { ref[0].dismiss(); onYes.run(); });
+        LinearLayout.LayoutParams ol = new LinearLayout.LayoutParams(0, dp(54), 1);
+        ol.leftMargin = dp(8);
+        row.addView(ok, ol);
+        box.addView(row);
+        ref[0] = sheet(box);
+    }
+
     @Override
     public void onRequestPermissionsResult(int req, String[] perms, int[] res) {
+        if (req == REQ_LOC) {
+            if (Places.hasFine(this) && pendingPlaceCat != null) addPlaceFlow(pendingPlaceCat);
+            else if (!Places.hasFine(this)) Toast.makeText(this, "위치 권한이 있어야 장소를 등록할 수 있어요", Toast.LENGTH_LONG).show();
+            pendingPlaceCat = null;
+            return;
+        }
+        if (req == REQ_BG) {
+            Places.registerAll(this);
+            refresh();
+            return;
+        }
         if (req != REQ_CAL) return;
         if (Cal.hasPerm(this)) {
             Prefs.setCalOn(this, true);

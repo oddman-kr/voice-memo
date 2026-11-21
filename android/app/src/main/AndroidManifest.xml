@@ -7,6 +7,21 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.READ_CALENDAR" />
     <uses-permission android:name="android.permission.WRITE_CALENDAR" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <queries>
+        <package android:name="viva.republica.toss" />
+        <package android:name="com.kakao.talk" />
+        <package android:name="com.coupang.mobile" />
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="geo" />
+        </intent>
+    </queries>
 
     <application
         android:allowBackup="true"
@@ -22,15 +37,52 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
         </activity>
 
         <activity
             android:name=".RecordActivity"
-            android:exported="false"
+            android:exported="true"
             android:excludeFromRecents="true"
             android:launchMode="singleTask"
             android:taskAffinity="kr.oddman.voicememo.rec"
             android:theme="@android:style/Theme.Material.NoActionBar" />
+
+        <!-- 갤럭시 측면 버튼 등에 연결할 수 있는 '바로 녹음' 아이콘 (설정에서 켜기) -->
+        <activity-alias
+            android:name=".QuickRecord"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="@string/sc_record"
+            android:targetActivity=".RecordActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <service
+            android:name=".RecordTile"
+            android:exported="true"
+            android:icon="@drawable/ic_mic"
+            android:label="@string/tile_name"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
+        <receiver
+            android:name=".Alerts"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
 
         <service
             android:name=".RecordService"

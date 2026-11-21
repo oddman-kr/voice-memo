@@ -3,4 +3,7 @@
     <string name="app_name">음성 메모</string>
     <string name="widget_name">원탭 녹음</string>
     <color name="icon_bg">#191F28</color>
+    <string name="sc_record">바로 녹음</string>
+    <string name="sc_meeting">회의 녹음</string>
+    <string name="tile_name">음성 메모</string>
 </resources>

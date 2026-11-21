@@ -36,6 +36,14 @@ public class Prefs {
         return out;
     }
 
+    public static boolean briefOn(Context c) { return sp(c).getBoolean("briefOn", true); }
+
+    public static int briefMinutes(Context c) { return sp(c).getInt("briefMin", 8 * 60 + 30); }
+
+    public static void setBrief(Context c, boolean on, int minutes) {
+        sp(c).edit().putBoolean("briefOn", on).putInt("briefMin", minutes).apply();
+    }
+
     public static boolean calOn(Context c) { return sp(c).getBoolean("calOn", false); }
 
     public static void setCalOn(Context c, boolean on) { sp(c).edit().putBoolean("calOn", on).apply(); }

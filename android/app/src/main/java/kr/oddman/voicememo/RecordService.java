@@ -20,7 +20,12 @@ public class RecordService extends Service {
     public static final String ACT_START = "kr.oddman.voicememo.START";
     public static final String ACT_STOP = "kr.oddman.voicememo.STOP";
     public static final String ACT_CANCEL = "kr.oddman.voicememo.CANCEL";
+    public static final String EXTRA_MEETING = "meeting";
     public static final long MAX_MS = 3 * 60 * 1000;
+    public static final long MEETING_MAX_MS = 3 * 60 * 60 * 1000L;
+    public static volatile boolean meeting = false;
+
+    public static long maxMs() { return meeting ? MEETING_MAX_MS : MAX_MS; }
 
     public static volatile boolean recording = false;
     public static volatile long startedAt = 0;
@@ -50,7 +55,7 @@ public class RecordService extends Service {
     @Override
     public int onStartCommand(Intent i, int flags, int startId) {
         String a = i == null ? null : i.getAction();
-        if (ACT_START.equals(a)) start();
+        if (ACT_START.equals(a)) start(i.getBooleanExtra(EXTRA_MEETING, false));
         else if (ACT_STOP.equals(a)) finishRec(true);
         else if (ACT_CANCEL.equals(a)) finishRec(false);
         else if (!recording) stopSelf();
@@ -72,8 +77,8 @@ public class RecordService extends Service {
                 PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         return new Notification.Builder(this, "rec")
                 .setSmallIcon(R.drawable.ic_stat)
-                .setContentTitle("녹음 중")
-                .setContentText("위젯을 다시 누르거나 '저장'을 누르면 저장돼요")
+                .setContentTitle(meeting ? "회의 녹음 중" : "녹음 중")
+                .setContentText(meeting ? "'저장'을 누르면 끝내고 정리해요" : "위젯을 다시 누르거나 '저장'을 누르면 저장돼요")
                 .setOngoing(true)
                 .setShowWhen(true)
                 .setUsesChronometer(true)
@@ -85,8 +90,9 @@ public class RecordService extends Service {
     }
 
     @SuppressWarnings("deprecation")
-    private void start() {
+    private void start(boolean isMeeting) {
         if (recording) return;
+        meeting = isMeeting;
         try {
             Notification n = notif();
             if (Build.VERSION.SDK_INT >= 29) startForeground(1, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE);
@@ -99,7 +105,7 @@ public class RecordService extends Service {
         try {
             File dir = new File(getFilesDir(), "memos");
             dir.mkdirs();
-            file = new File(dir, "memo_" + System.currentTimeMillis() + ".aac");
+            file = new File(dir, (meeting ? "meeting_" : "memo_") + System.currentTimeMillis() + ".aac");
             MediaRecorder r = Build.VERSION.SDK_INT >= 31 ? new MediaRecorder(this) : new MediaRecorder();
             rec = r;
             r.setAudioSource(MediaRecorder.AudioSource.MIC);
@@ -107,13 +113,13 @@ public class RecordService extends Service {
             r.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
             r.setAudioChannels(1);
             r.setAudioSamplingRate(16000);
-            r.setAudioEncodingBitRate(32000);
+            r.setAudioEncodingBitRate(meeting ? 24000 : 32000);
             r.setOutputFile(file.getAbsolutePath());
             r.prepare();
             r.start();
             startedAt = System.currentTimeMillis();
             recording = true;
-            h.postDelayed(autoStop, MAX_MS);
+            h.postDelayed(autoStop, maxMs());
             MemoWidget.updateAll(this);
         } catch (Exception e) {
             releaseRec();
@@ -148,8 +154,8 @@ public class RecordService extends Service {
         stopForeground(STOP_FOREGROUND_REMOVE);
         MemoWidget.updateAll(this);
         if (save && ok && dur >= 800 && file.length() > 0) {
-            long id = Db.get(this).addMemo(file.getAbsolutePath(), startedAt, dur);
-            toast("저장했어요");
+            long id = Db.get(this).addMemo(file.getAbsolutePath(), startedAt, dur, meeting ? "meeting" : "memo");
+            toast(meeting ? "회의 녹음을 저장했어요. 정리하는 데 시간이 조금 걸려요" : "저장했어요");
             UiBus.changed();
             Classifier.enqueue(this, id);
         } else {
