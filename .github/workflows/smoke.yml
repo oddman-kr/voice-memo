@@ -49,8 +49,13 @@ jobs:
           cat > smoke.sh <<'SH'
           set +e
           P=kr.oddman.voicememo
-          shot() { sleep 2; adb exec-out screencap -p > shots/$1.png; echo "shot $1"; }
+          unanr() { python3 tap.py "Wait" >/dev/null; python3 tap.py "Close app" >/dev/null; }
+          shot() { sleep 2; unanr; adb exec-out screencap -p > shots/$1.png; echo "shot $1"; }
           mkdir -p shots
+          adb shell settings put global hide_error_dialogs 1
+          adb wait-for-device
+          sleep 25
+          unanr
           adb install -r app.apk
           adb shell pm grant $P android.permission.RECORD_AUDIO
           adb shell pm grant $P android.permission.POST_NOTIFICATIONS
@@ -82,6 +87,7 @@ jobs:
           sleep 1
           python3 tap.py "설정"
           sleep 2
+          unanr
           python3 tap.py "내 이용권"
           shot 08_pass_sheet
           python3 tap.py "하루 동안 정리 무제한"
