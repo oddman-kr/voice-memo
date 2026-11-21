@@ -333,8 +333,9 @@ public class MainActivity extends Activity {
         iv.setImageResource(icon);
         l.addView(iv, lp(dp(24), dp(24)));
         TextView t = tv(label, 11, T4, 2);
+        t.setGravity(Gravity.CENTER);
         t.setPadding(0, dp(4), 0, 0);
-        l.addView(t);
+        l.addView(t, lp(-1, -2));
         l.setOnClickListener(v -> onClick.run());
         return l;
     }
@@ -530,6 +531,7 @@ public class MainActivity extends Activity {
         c.setPadding(dp(24), dp(48), dp(24), dp(24));
         c.addView(iconBox(icon, T3, WHITE, 64, 28, -1));
         TextView h = tv(head, 18, T1, 3);
+        h.setGravity(Gravity.CENTER);
         h.setPadding(0, dp(18), 0, dp(8));
         c.addView(h);
         TextView b = tv(body, 15, T3, 0);
@@ -1129,7 +1131,8 @@ public class MainActivity extends Activity {
         hl.gravity = Gravity.CENTER_HORIZONTAL;
         hl.bottomMargin = dp(18);
         wrap.addView(handle, hl);
-        wrap.addView(content);
+        // 화면보다 길면 내용이 줄어들며 스크롤되도록 (저장 버튼이 잘리지 않게)
+        wrap.addView(content, new LinearLayout.LayoutParams(-1, 0, 1f));
         d.setContentView(wrap);
         Window w = d.getWindow();
         if (w != null) {
@@ -1255,6 +1258,7 @@ public class MainActivity extends Activity {
         EditText key = input(Prefs.key(this), "AIza로 시작하는 키");
         key.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD);
         key.setSingleLine(true);
+        key.setTypeface(fM);
         box.addView(key);
         TextView link = tv("키 받으러 가기", 14, 0xFF3182F6, 2);
         link.setPadding(dp(2), dp(12), 0, 0);

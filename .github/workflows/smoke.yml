@@ -80,7 +80,8 @@ jobs:
           sleep 1
           python3 tap.py "설정"
           shot 06_settings
-          adb shell input swipe 160 560 160 120 300
+          adb shell input swipe 540 2000 540 400 300
+          adb shell input swipe 540 2000 540 400 300
           shot 07_settings2
           adb shell input keyevent 4
           sleep 1
