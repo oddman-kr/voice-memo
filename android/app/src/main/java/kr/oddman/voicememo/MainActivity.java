@@ -417,7 +417,10 @@ public class MainActivity extends Activity {
         LinearLayout head = new LinearLayout(this);
         head.setGravity(Gravity.CENTER_VERTICAL);
         head.setPadding(dp(6), dp(8), 0, dp(18));
-        head.addView(tv(open.isEmpty() ? "다 끝냈어요" : "남은 것 " + open.size() + "개", 26, T1, 3), weight());
+        int waitingNow = waitingCount();
+        String headline = !open.isEmpty() ? "남은 것 " + open.size() + "개"
+                : waitingNow > 0 ? "정리할 녹음 " + waitingNow + "개" : "다 끝냈어요";
+        head.addView(tv(headline, 26, T1, 3), weight());
         View gear = iconBox(R.drawable.ic_settings, T3, BG, 40, 22, -1);
         gear.setOnClickListener(v -> openSettings());
         gear.setContentDescription("설정");
@@ -430,6 +433,7 @@ public class MainActivity extends Activity {
         addPeopleChips();
 
         if (open.isEmpty()) {
+            if (waitingNow > 0) return; // 대기 카드가 이미 할 일을 알려줘요
             boolean anyMemo = !Db.get(this).memos().isEmpty();
             empty(R.drawable.ic_mic, anyMemo ? "남은 게 없어요" : "떠오르면 바로 말해 보세요",
                     anyMemo ? "새로 생긴 일은 아래 버튼으로 말해 두세요." : "아래 버튼이나 홈 화면 위젯을 누르고 말하면\n살 것, 할 일, 보낼 돈으로 알아서 나눠 드려요.");
