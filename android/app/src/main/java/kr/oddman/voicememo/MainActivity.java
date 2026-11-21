@@ -247,15 +247,6 @@ public class MainActivity extends Activity {
         Window w = getWindow();
         w.setStatusBarColor(BG);
         w.setNavigationBarColor(WHITE);
-        if (Build.VERSION.SDK_INT >= 30) {
-            WindowInsetsController c = w.getInsetsController();
-            if (c != null) {
-                int f = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
-                c.setSystemBarsAppearance(f, f);
-            }
-        } else {
-            w.getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
-        }
 
         FrameLayout frame = new FrameLayout(this);
         frame.setBackgroundColor(BG);
@@ -303,7 +294,24 @@ public class MainActivity extends Activity {
         frame.addView(mic, ml);
 
         setContentView(frame);
+        lightBars();
         handleIntent(getIntent());
+    }
+
+    @SuppressWarnings("deprecation")
+    private void lightBars() {
+        Window w = getWindow();
+        try {
+            if (Build.VERSION.SDK_INT >= 30) {
+                WindowInsetsController c = w.getDecorView().getWindowInsetsController();
+                if (c != null) {
+                    int f = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
+                    c.setSystemBarsAppearance(f, f);
+                }
+            } else {
+                w.getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
+            }
+        } catch (Exception ignored) { }
     }
 
     @Override
