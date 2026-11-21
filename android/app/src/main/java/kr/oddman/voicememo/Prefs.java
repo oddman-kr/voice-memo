@@ -9,7 +9,7 @@ import java.util.List;
 public class Prefs {
     public static final String DEFAULT_MODEL = "gemini-flash-latest";
     public static final String FALLBACK_MODEL = "gemini-2.5-flash";
-    public static final String DEFAULT_CATS = "쿠팡, 다이소, 할 일, 송금, 기타";
+    public static final String DEFAULT_CATS = "할 일, 송금, 쿠팡, 다이소, 기타";
     public static final String OTHER = "기타";
 
     static SharedPreferences sp(Context c) {
@@ -35,6 +35,14 @@ public class Prefs {
         out.add(OTHER);
         return out;
     }
+
+    public static boolean calOn(Context c) { return sp(c).getBoolean("calOn", false); }
+
+    public static void setCalOn(Context c, boolean on) { sp(c).edit().putBoolean("calOn", on).apply(); }
+
+    public static long calId(Context c) { return sp(c).getLong("calId", -1); }
+
+    public static void setCalId(Context c, long id) { sp(c).edit().putLong("calId", id).apply(); }
 
     public static void save(Context c, String key, String cats, String model) {
         sp(c).edit().putString("key", key.trim()).putString("cats", cats).putString("model", model.trim()).apply();

@@ -119,14 +119,14 @@ public class RecordActivity extends Activity {
         title.setText("● 듣고 있어요");
         title.setTextColor(0xFFFF5A4E);
         title.setTextSize(15);
-        title.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        title.setTypeface(getResources().getFont(R.font.pretendard_semibold));
         root.addView(title);
 
         timer = new TextView(this);
         timer.setText("0:00");
         timer.setTextColor(Color.WHITE);
         timer.setTextSize(60);
-        timer.setTypeface(Typeface.create("sans-serif-light", Typeface.NORMAL));
+        timer.setTypeface(getResources().getFont(R.font.pretendard_regular));
         timer.setPadding(0, dp(6), 0, 0);
         root.addView(timer);
 
@@ -134,6 +134,7 @@ public class RecordActivity extends Activity {
         hint.setText("살 것, 할 일, 보낼 돈을 편하게 말해 주세요");
         hint.setTextColor(0x99FFFFFF);
         hint.setTextSize(14);
+        hint.setTypeface(getResources().getFont(R.font.pretendard_regular));
         hint.setGravity(Gravity.CENTER);
         root.addView(hint);
 
@@ -146,12 +147,14 @@ public class RecordActivity extends Activity {
         tap.setText("가운데를 누르면 저장돼요 · 최대 3분");
         tap.setTextColor(0x99FFFFFF);
         tap.setTextSize(13);
+        tap.setTypeface(getResources().getFont(R.font.pretendard_regular));
         root.addView(tap);
 
         TextView cancel = new TextView(this);
         cancel.setText("취소");
         cancel.setTextColor(Color.WHITE);
         cancel.setTextSize(15);
+        cancel.setTypeface(getResources().getFont(R.font.pretendard_medium));
         cancel.setGravity(Gravity.CENTER);
         GradientDrawable g = new GradientDrawable();
         g.setColor(0x1AFFFFFF);

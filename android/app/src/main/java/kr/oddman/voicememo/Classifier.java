@@ -45,7 +45,14 @@ public class Classifier {
         }
         try {
             Gemini.Result r = Gemini.classify(key, Prefs.model(app), f, Prefs.cats(app), m.created);
+            for (Db.Item old : db.itemsOfMemo(id)) Cal.deleteEvent(app, old.eventId);
             db.setResult(id, r.transcript, r.items);
+            if (Cal.active(app)) {
+                for (Db.Item it : r.items) {
+                    long ev = Cal.addEvent(app, it, m.created);
+                    if (ev > 0) db.setEventId(it.id, ev);
+                }
+            }
         } catch (java.net.UnknownHostException | java.net.SocketTimeoutException | java.net.ConnectException e) {
             db.setStatus(id, "error", "인터넷 연결을 확인해 주세요");
         } catch (Exception e) {

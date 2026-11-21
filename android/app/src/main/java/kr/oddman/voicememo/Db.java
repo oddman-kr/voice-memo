@@ -20,16 +20,18 @@ public class Db extends SQLiteOpenHelper {
         return inst;
     }
 
-    private Db(Context c) { super(c, "memo.db", null, 1); }
+    private Db(Context c) { super(c, "memo.db", null, 2); }
 
     @Override
     public void onCreate(SQLiteDatabase d) {
         d.execSQL("CREATE TABLE memo(id INTEGER PRIMARY KEY AUTOINCREMENT, path TEXT, created INTEGER, duration INTEGER, transcript TEXT, status TEXT, error TEXT)");
-        d.execSQL("CREATE TABLE item(id INTEGER PRIMARY KEY AUTOINCREMENT, memo_id INTEGER, category TEXT, text TEXT, due TEXT, amount TEXT, person TEXT, done INTEGER DEFAULT 0, created INTEGER)");
+        d.execSQL("CREATE TABLE item(id INTEGER PRIMARY KEY AUTOINCREMENT, memo_id INTEGER, category TEXT, text TEXT, due TEXT, amount TEXT, person TEXT, done INTEGER DEFAULT 0, created INTEGER, event_id INTEGER DEFAULT 0)");
     }
 
     @Override
-    public void onUpgrade(SQLiteDatabase d, int o, int n) { }
+    public void onUpgrade(SQLiteDatabase d, int o, int n) {
+        if (o < 2) d.execSQL("ALTER TABLE item ADD COLUMN event_id INTEGER DEFAULT 0");
+    }
 
     public static class Memo {
         public long id, created, duration;
@@ -37,7 +39,7 @@ public class Db extends SQLiteOpenHelper {
     }
 
     public static class Item {
-        public long id, memoId, created;
+        public long id, memoId, created, eventId;
         public String category, text, due, amount, person;
         public boolean done;
     }
@@ -76,7 +78,8 @@ public class Db extends SQLiteOpenHelper {
                 v.put("person", it.person);
                 v.put("done", 0);
                 v.put("created", now);
-                d.insert("item", null, v);
+                it.id = d.insert("item", null, v);
+                it.memoId = id;
             }
             ContentValues m = new ContentValues();
             m.put("transcript", transcript);
@@ -112,6 +115,8 @@ public class Db extends SQLiteOpenHelper {
         i.person = c.getString(c.getColumnIndexOrThrow("person"));
         i.done = c.getInt(c.getColumnIndexOrThrow("done")) != 0;
         i.created = c.getLong(c.getColumnIndexOrThrow("created"));
+        int ei = c.getColumnIndex("event_id");
+        i.eventId = ei >= 0 && !c.isNull(ei) ? c.getLong(ei) : 0;
         return i;
     }
 
@@ -177,6 +182,26 @@ public class Db extends SQLiteOpenHelper {
         ContentValues v = new ContentValues();
         v.put("text", text);
         getWritableDatabase().update("item", v, "id=?", a(id));
+    }
+
+    public void setEventId(long id, long eventId) {
+        ContentValues v = new ContentValues();
+        v.put("event_id", eventId);
+        getWritableDatabase().update("item", v, "id=?", a(id));
+    }
+
+    public Item item(long id) {
+        try (Cursor c = getReadableDatabase().rawQuery("SELECT * FROM item WHERE id=?", a(id))) {
+            return c.moveToFirst() ? itemFrom(c) : null;
+        }
+    }
+
+    public List<Item> allOpen() {
+        List<Item> out = new ArrayList<>();
+        try (Cursor c = getReadableDatabase().rawQuery("SELECT * FROM item WHERE done=0", null)) {
+            while (c.moveToNext()) out.add(itemFrom(c));
+        }
+        return out;
     }
 
     public void deleteItem(long id) { getWritableDatabase().delete("item", "id=?", a(id)); }
