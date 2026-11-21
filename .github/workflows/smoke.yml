@@ -6,6 +6,9 @@ on:
     types: [completed]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   smoke:
     runs-on: ubuntu-latest
@@ -26,18 +29,65 @@ jobs:
 
       - name: 테스트 스크립트 만들기
         run: |
+          cat > tap.py <<'PY'
+          import re, subprocess, sys
+          want = sys.argv[1]
+          subprocess.run(["adb", "shell", "uiautomator", "dump", "/sdcard/ui.xml"], capture_output=True)
+          xml = subprocess.run(["adb", "shell", "cat", "/sdcard/ui.xml"], capture_output=True, text=True).stdout
+          for m in re.finditer(r'<node [^>]*>', xml):
+              n = m.group(0)
+              t = re.search(r' text="([^"]*)"', n).group(1)
+              d = re.search(r'content-desc="([^"]*)"', n).group(1)
+              if want == t or want == d or (want.endswith("*") and t.startswith(want[:-1])):
+                  b = list(map(int, re.findall(r"\d+", re.search(r'bounds="([^"]*)"', n).group(1))))
+                  x, y = (b[0] + b[2]) // 2, (b[1] + b[3]) // 2
+                  subprocess.run(["adb", "shell", "input", "tap", str(x), str(y)])
+                  print("tapped", want, x, y)
+                  sys.exit(0)
+          print("NOT FOUND", want)
+          PY
           cat > smoke.sh <<'SH'
           set +e
+          P=kr.oddman.voicememo
+          shot() { sleep 2; adb exec-out screencap -p > shots/$1.png; echo "shot $1"; }
+          mkdir -p shots
           adb install -r app.apk
+          adb shell pm grant $P android.permission.RECORD_AUDIO
+          adb shell pm grant $P android.permission.POST_NOTIFICATIONS
           adb logcat -c
-          adb shell am start -W -n kr.oddman.voicememo/.MainActivity
-          sleep 8
-          adb shell am start -W -n kr.oddman.voicememo/.RecordActivity
-          sleep 5
+          adb shell am start -W -n $P/.MainActivity
+          shot 01_home
+          adb shell am start -n $P/.RecordActivity
+          sleep 4
+          shot 02_record
+          adb shell am start -n $P/.RecordActivity --ez toggle true
+          sleep 3
+          adb shell am start -W -n $P/.MainActivity
+          python3 tap.py "기록"
+          shot 03_history
+          python3 tap.py "오후*" || true
+          python3 tap.py "오전*" || true
+          shot 04_memo_sheet
+          adb shell input keyevent 4
+          sleep 1
+          python3 tap.py "회의 녹음"
+          sleep 3
+          shot 05_meeting
+          adb shell am start -n $P/.RecordActivity --ez toggle true
+          sleep 2
+          adb shell am start -W -n $P/.MainActivity
+          python3 tap.py "정리"
+          sleep 1
+          python3 tap.py "설정"
+          shot 06_settings
+          adb shell input swipe 160 560 160 120 300
+          shot 07_settings2
+          adb shell input keyevent 4
+          sleep 1
           adb logcat -d -b crash > crash.txt
-          adb logcat -d | grep -E "AndroidRuntime|FATAL|kr.oddman|System.err" | head -150 > app.txt
+          adb logcat -d | grep -E "AndroidRuntime|FATAL|System.err" | head -80 > app.txt
           echo "---- crash ----"; cat crash.txt; echo "---- app ----"; cat app.txt
-          msg=$( (cat crash.txt; echo ====; head -60 app.txt) | head -100 | sed 's/%/%25/g' | sed ':a;N;$!ba;s/\n/%0A/g')
+          msg=$( (cat crash.txt; echo ====; head -40 app.txt) | head -100 | sed 's/%/%25/g' | sed ':a;N;$!ba;s/\n/%0A/g')
           if [ -s crash.txt ]; then echo "::error title=crash::${msg}"; else echo "::notice title=no-crash::${msg}"; fi
           exit 0
           SH
@@ -49,5 +99,15 @@ jobs:
           api-level: 34
           target: google_apis
           arch: x86_64
+          profile: pixel_6
           disable-animations: true
           script: bash ./smoke.sh
+
+      - name: 화면 올리기
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls -l shots || exit 0
+          gh release delete smoke-shots -y --cleanup-tag -R ${{ github.repository }} || true
+          gh release create smoke-shots shots/*.png -R ${{ github.repository }} --title "테스트 화면" --notes "자동 테스트 화면" --prerelease
