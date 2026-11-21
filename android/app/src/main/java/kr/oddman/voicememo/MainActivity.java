@@ -523,6 +523,31 @@ public class MainActivity extends Activity {
             l.bottomMargin = dp(12);
             list.addView(c, l);
         }
+        int failed = 0;
+        for (Db.Memo m : Db.get(this).memos()) if ("error".equals(m.status) && !Classifier.isRunning(m.id)) failed++;
+        if (failed > 0) {
+            LinearLayout c = new LinearLayout(this);
+            c.setGravity(Gravity.CENTER_VERTICAL);
+            c.setBackground(round(0xFFFFF0F1, 18));
+            c.setPadding(dp(16), dp(14), dp(14), dp(14));
+            c.addView(iconBox(R.drawable.ic_refresh, RED, WHITE, 36, 18, -1));
+            LinearLayout col = new LinearLayout(this);
+            col.setOrientation(LinearLayout.VERTICAL);
+            col.setPadding(dp(12), 0, 0, 0);
+            col.addView(tv("정리하지 못한 녹음 " + failed + "개", 15, RED, 3));
+            TextView s3 = tv("녹음은 안전해요. 기록에서 눌러 다시 시도하세요", 13, T2, 0);
+            s3.setPadding(0, dp(4), 0, 0);
+            col.addView(s3);
+            c.addView(col, weight());
+            ImageView ch = new ImageView(this);
+            ch.setImageResource(R.drawable.ic_chevron);
+            ch.setColorFilter(RED);
+            c.addView(ch, lp(dp(20), dp(20)));
+            c.setOnClickListener(v -> go(HIST, null));
+            LinearLayout.LayoutParams l = lp(-1, -2);
+            l.bottomMargin = dp(12);
+            list.addView(c, l);
+        }
         if (Entitlement.unlimited(this) || Entitlement.subscribed(this)) return;
         String line = null;
         int color = T3;
