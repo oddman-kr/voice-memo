@@ -913,6 +913,8 @@ public class MainActivity extends Activity {
         int headColor = T1;
         if (m.meeting() && m.title != null) head = m.title;
         else if (m.transcript != null && !m.transcript.isEmpty()) head = m.transcript;
+        else if ("done".equals(m.status) && count > 0) head = itemsSummary(Db.get(this).itemsOfMemo(m.id));
+        else if ("done".equals(m.status)) { head = "정리할 내용이 없었어요"; headColor = T2; }
         else if (m.meeting() && !error && !running) { head = "회의 녹음"; headColor = T2; }
         else if (error) { head = "정리하지 못했어요"; headColor = T2; }
         else if (running) { head = "정리하고 있어요"; headColor = T2; }
@@ -937,6 +939,19 @@ public class MainActivity extends Activity {
 
         r.setOnClickListener(v -> { if (error) reclassify(m); else memoSheet(m); });
         return r;
+    }
+
+    /** 분류 결과로 만드는 한 줄 요약: "다이소 2개 · 송금 1건" (AI 비용 없음) */
+    static String itemsSummary(List<Db.Item> items) {
+        Map<String, Integer> cnt = new LinkedHashMap<>();
+        for (Db.Item it : items) cnt.put(it.category, cnt.getOrDefault(it.category, 0) + 1);
+        StringBuilder sb = new StringBuilder();
+        for (Map.Entry<String, Integer> e : cnt.entrySet()) {
+            if (sb.length() > 0) sb.append(" · ");
+            sb.append(e.getKey()).append(' ').append(e.getValue()).append("송금".equals(e.getKey()) ? "건" : "개");
+        }
+        if (items.size() == 1) sb.append(" · ").append(items.get(0).text);
+        return sb.toString();
     }
 
     private void reclassify(Db.Memo m) {

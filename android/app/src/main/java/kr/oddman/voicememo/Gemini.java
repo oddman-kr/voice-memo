@@ -58,8 +58,7 @@ public class Gemini {
         p.append("녹음한 시각: ").append(when).append("\n\n");
         p.append("카테고리(반드시 이 중 하나를 그대로 써):\n").append(catList).append('\n');
         p.append("공통 규칙:\n")
-                .append("- transcript: 녹음 내용을 받아 적어. 말버릇(음, 어)은 빼도 돼.")
-                .append(meeting ? " 말하는 사람이 바뀌면 줄을 바꾸고, 구분되면 '화자1:', '화자2:'처럼 앞에 붙여.\n" : "\n")
+                .append(meeting ? "- transcript: 녹음 내용을 받아 적어. 말하는 사람이 바뀌면 줄을 바꿔.\n" : "- transcript: 빈 문자열로 둬. 받아쓰기는 필요 없어.\n")
                 .append("- items의 text는 짧고 분명하게 (예: '건전지 AA 4개', '엄마한테 5만원 보내기', '정형외과 예약').\n")
                 .append("- 쿠팡에서 살 것은 '쿠팡', 다이소에서 살 것은 '다이소', 언제까지 해야 하는 일이나 일정은 '할 일', 누군가에게 돈을 보내거나 갚아야 하면 '송금'. 그 밖의 카테고리는 이름 뜻에 맞게 고르고, 어디에도 안 맞으면 '").append(Prefs.OTHER).append("'.\n")
                 .append("- due: 기한·날짜가 나오면 녹음한 시각 기준으로 계산해서 'YYYY-MM-DD' (시간도 있으면 'YYYY-MM-DD HH:mm', 24시간제). 없으면 빈 문자열.\n")
@@ -107,7 +106,7 @@ public class Gemini {
                                 .put("required", new JSONArray().put("category").put("text"))))
                         .put("actions", s("ARRAY").put("items", s("OBJECT").put("properties", actProps)
                                 .put("required", new JSONArray().put("type").put("item_id")))))
-                .put("required", new JSONArray().put("transcript").put("items").put("actions"));
+                .put("required", new JSONArray().put("items").put("actions"));
 
         JSONObject audioPart;
         if (audio.length() > INLINE_MAX) {
