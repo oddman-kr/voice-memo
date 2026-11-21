@@ -374,8 +374,9 @@ public class MainActivity extends Activity {
         UiBus.listener = this::refresh;
         if (!Prefs.key(this).isEmpty()) {
             for (Db.Memo m : Db.get(this).memos())
-                if ("pending".equals(m.status) || "nokey".equals(m.status)) Classifier.enqueue(this, m.id);
+                if ("pending".equals(m.status) || "nokey".equals(m.status) || "waiting".equals(m.status)) Classifier.enqueue(this, m.id);
         }
+        Ads.init(this);
         MemoWidget.updateAll(this);
         Brief.schedule(this);
         Places.registerAll(this);
@@ -425,6 +426,7 @@ public class MainActivity extends Activity {
 
         if (Prefs.key(this).isEmpty()) list.addView(keyBanner());
         addRunningNotice();
+        addAccessCards();
         addPeopleChips();
 
         if (open.isEmpty()) {
@@ -481,6 +483,194 @@ public class MainActivity extends Activity {
             if (x.due == null && y.due != null) return 1;
             return Long.compare(y.created, x.created);
         });
+    }
+
+    private int waitingCount() {
+        int n = 0;
+        for (Db.Memo m : Db.get(this).memos()) if ("waiting".equals(m.status) && !Classifier.isRunning(m.id)) n++;
+        return n;
+    }
+
+    /** 정리 대기 카드, 이용권 상태, 무료 남은 횟수 */
+    private void addAccessCards() {
+        int waiting = waitingCount();
+        if (waiting > 0) {
+            LinearLayout c = new LinearLayout(this);
+            c.setGravity(Gravity.CENTER_VERTICAL);
+            GradientDrawable g = round(WHITE, 18);
+            g.setStroke(dp(2), T1);
+            c.setBackground(g);
+            c.setPadding(dp(16), dp(16), dp(14), dp(16));
+            c.addView(iconBox(R.drawable.ic_mic, WHITE, T1, 40, 20, -1));
+            LinearLayout col = new LinearLayout(this);
+            col.setOrientation(LinearLayout.VERTICAL);
+            col.setPadding(dp(12), 0, 0, 0);
+            col.addView(tv("녹음 " + waiting + "개가 정리를 기다려요", 16, T1, 3));
+            TextView s2 = tv("광고 1개면 하루 동안 바로바로 정리돼요", 13, T3, 0);
+            s2.setPadding(0, dp(5), 0, 0);
+            col.addView(s2);
+            c.addView(col, weight());
+            TextView go = tv("정리하기", 14, WHITE, 2);
+            go.setBackground(round(T1, 14));
+            go.setPadding(dp(12), dp(8), dp(12), dp(8));
+            c.addView(go);
+            c.setOnClickListener(v -> passSheet());
+            LinearLayout.LayoutParams l = lp(-1, -2);
+            l.bottomMargin = dp(12);
+            list.addView(c, l);
+        }
+        if (Entitlement.unlimited(this) || Entitlement.subscribed(this)) return;
+        String line = null;
+        int color = T3;
+        if (Entitlement.passActive(this)) {
+            line = "이용권 사용 중 · " + new SimpleDateFormat("M월 d일 a h시", Locale.KOREAN).format(new Date(Entitlement.passUntil(this))) + "까지";
+        } else if (Entitlement.freeLeft(this) > 0 && Entitlement.freeLeft(this) <= 3) {
+            line = "무료 정리 " + Entitlement.freeLeft(this) + "회 남았어요 · 녹음은 언제나 무제한이에요";
+            color = AMBER_T;
+        }
+        if (line != null) {
+            TextView t = tv(line, 13, color, 1);
+            t.setPadding(dp(6), 0, 0, dp(12));
+            t.setOnClickListener(v -> passSheet());
+            list.addView(t);
+        }
+    }
+
+    // ---------- 이용권 ----------
+
+    private void passSheet() {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        int waiting = waitingCount();
+        box.addView(tv(waiting > 0 ? "녹음 " + waiting + "개를 정리할까요?" : "정리 이용권", 22, T1, 3));
+        String sub = Entitlement.passActive(this)
+                ? "지금 이용권은 " + new SimpleDateFormat("M월 d일 a h시", Locale.KOREAN).format(new Date(Entitlement.passUntil(this))) + "까지예요. 받으면 그 뒤로 이어져요."
+                : Entitlement.freeLeft(this) > 0 ? "무료 정리가 " + Entitlement.freeLeft(this) + "회 남았어요." : "무료 정리 10회를 다 썼어요. 녹음은 계속 저장돼요.";
+        TextView sb = tv(sub, 14, T3, 0);
+        sb.setLineSpacing(dp(4), 1f);
+        sb.setPadding(0, dp(8), 0, dp(16));
+        box.addView(sb);
+        final Dialog[] ref = new Dialog[1];
+        String[] names = {"하루", "사흘", "일주일"};
+        for (int i = 0; i < Entitlement.PACKS.length; i++) {
+            final int pack = i;
+            int need = Entitlement.PACKS[i][0], prog = Entitlement.adProgress(this, i);
+            LinearLayout row = new LinearLayout(this);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setBackground(round(BG, 16));
+            row.setPadding(dp(16), dp(14), dp(16), dp(14));
+            LinearLayout col = new LinearLayout(this);
+            col.setOrientation(LinearLayout.VERTICAL);
+            col.addView(tv(names[i] + " 동안 정리 무제한", 16, T1, 2));
+            TextView pt = tv(prog > 0 ? "광고 " + need + "개 중 " + prog + "개 봤어요" : "광고 " + need + "개 보기 (30초 안팎씩)", 13, prog > 0 ? 0xFF1B64DA : T3, prog > 0 ? 2 : 0);
+            pt.setPadding(0, dp(5), 0, 0);
+            col.addView(pt);
+            row.addView(col, weight());
+            ImageView ch = new ImageView(this);
+            ch.setImageResource(R.drawable.ic_chevron);
+            ch.setColorFilter(T4);
+            row.addView(ch, lp(dp(20), dp(20)));
+            row.setOnClickListener(v -> { ref[0].dismiss(); watchAd(pack); });
+            LinearLayout.LayoutParams rl = lp(-1, -2);
+            rl.bottomMargin = dp(8);
+            box.addView(row, rl);
+        }
+        LinearLayout subBox = new LinearLayout(this);
+        subBox.setOrientation(LinearLayout.VERTICAL);
+        subBox.setBackground(round(T1, 16));
+        subBox.setPadding(dp(16), dp(16), dp(16), dp(16));
+        subBox.addView(tv("광고 없이 쓰기", 17, WHITE, 3));
+        TextView pr = tv("연 12,000원 (월 1,000원꼴) · 월 1,500원", 14, 0xCCFFFFFF, 1);
+        pr.setPadding(0, dp(6), 0, 0);
+        subBox.addView(pr);
+        subBox.setOnClickListener(v -> { ref[0].dismiss(); subscribeSheet(); });
+        LinearLayout.LayoutParams sl = lp(-1, -2);
+        sl.topMargin = dp(8);
+        box.addView(subBox, sl);
+        ScrollView sv = new ScrollView(this);
+        sv.addView(box);
+        ref[0] = sheet(sv);
+    }
+
+    private void watchAd(int pack) {
+        Toast.makeText(this, "광고를 불러오고 있어요", Toast.LENGTH_SHORT).show();
+        Ads.showOne(this, (rewarded, failed) -> {
+            if (isFinishing() || isDestroyed()) return;
+            if (failed) { adFailSheet(pack); return; }
+            if (!rewarded) {
+                Toast.makeText(this, "광고를 끝까지 봐야 인정돼요", Toast.LENGTH_SHORT).show();
+                refresh();
+                return;
+            }
+            if (Entitlement.adWatched(this, pack)) {
+                String[] names = {"하루", "사흘", "일주일"};
+                Toast.makeText(this, names[pack] + " 이용권을 받았어요. 대기 중인 녹음을 정리할게요", Toast.LENGTH_LONG).show();
+                Classifier.retryWaiting(this);
+                refresh();
+            } else {
+                nextAdSheet(pack);
+            }
+        });
+    }
+
+    private void nextAdSheet(int pack) {
+        int need = Entitlement.PACKS[pack][0], prog = Entitlement.adProgress(this, pack);
+        confirmPlain(need + "개 중 " + prog + "개 봤어요",
+                "남은 광고 " + (need - prog) + "개를 보면 이용권을 받아요. 지금 그만둬도 본 개수는 기억해 둘게요.",
+                "다음 광고 보기", () -> watchAd(pack));
+        refresh();
+    }
+
+    private void adFailSheet(int pack) {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.addView(tv("지금 볼 수 있는 광고가 없어요", 20, T1, 3));
+        TextView b = tv("잠시 후 다시 시도해 주세요. 지금까지 본 광고 수는 그대로 남아 있고, 녹음도 안전하게 저장돼 있어요.", 15, T3, 0);
+        b.setLineSpacing(dp(4), 1f);
+        b.setPadding(0, dp(10), 0, dp(24));
+        box.addView(b);
+        final Dialog[] ref = new Dialog[1];
+        LinearLayout row = new LinearLayout(this);
+        TextView again = button("다시 시도", false);
+        again.setOnClickListener(v -> { ref[0].dismiss(); watchAd(pack); });
+        row.addView(again, new LinearLayout.LayoutParams(0, dp(54), 1));
+        TextView sub = button("광고 없이 쓰기", true);
+        sub.setOnClickListener(v -> { ref[0].dismiss(); subscribeSheet(); });
+        LinearLayout.LayoutParams ol = new LinearLayout.LayoutParams(0, dp(54), 1);
+        ol.leftMargin = dp(8);
+        row.addView(sub, ol);
+        box.addView(row);
+        ref[0] = sheet(box);
+    }
+
+    private void subscribeSheet() {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.addView(tv("광고 없이 쓰기", 22, T1, 3));
+        TextView b = tv("정리 무제한, 광고 없음. 녹음은 지금처럼 언제나 무료예요.", 15, T3, 0);
+        b.setLineSpacing(dp(4), 1f);
+        b.setPadding(0, dp(10), 0, dp(20));
+        box.addView(b);
+        final Dialog[] ref = new Dialog[1];
+        String[][] plans = {{"연간", "12,000원 · 월 1,000원꼴"}, {"월간", "1,500원"}};
+        for (int i = 0; i < plans.length; i++) {
+            LinearLayout row = new LinearLayout(this);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            GradientDrawable g = round(i == 0 ? 0xFFE8F3FF : BG, 16);
+            if (i == 0) g.setStroke(dp(2), 0xFF3182F6);
+            row.setBackground(g);
+            row.setPadding(dp(16), dp(16), dp(16), dp(16));
+            row.addView(tv(plans[i][0], 16, T1, 3), weight());
+            row.addView(tv(plans[i][1], 15, T1, 2));
+            row.setOnClickListener(v -> Toast.makeText(this, "결제는 정식 출시 때 열려요", Toast.LENGTH_SHORT).show());
+            LinearLayout.LayoutParams rl = lp(-1, -2);
+            rl.bottomMargin = dp(8);
+            box.addView(row, rl);
+        }
+        TextView note = tv("언제든 플레이 스토어에서 해지할 수 있어요.", 13, T3, 0);
+        note.setPadding(dp(2), dp(8), 0, 0);
+        box.addView(note);
+        ref[0] = sheet(box);
     }
 
     private void addRunningNotice() {
@@ -918,6 +1108,7 @@ public class MainActivity extends Activity {
         else if (m.meeting() && !error && !running) { head = "회의 녹음"; headColor = T2; }
         else if (error) { head = "정리하지 못했어요"; headColor = T2; }
         else if (running) { head = "정리하고 있어요"; headColor = T2; }
+        else if ("waiting".equals(m.status)) { head = "정리를 기다리는 녹음"; headColor = T2; }
         else { head = "아직 정리 전이에요"; headColor = T2; }
         TextView t = tv(head, 16, headColor, 1);
         t.setMaxLines(2);
@@ -930,6 +1121,7 @@ public class MainActivity extends Activity {
         else if (error) tail = "눌러서 다시 시도";
         else if ("nokey".equals(m.status)) tail = "API 키를 넣으면 정리돼요";
         else if ("pending".equals(m.status)) tail = "정리 대기 중";
+        else if ("waiting".equals(m.status)) tail = "정리 대기 · 눌러서 정리하기";
         else tail = count > 0 ? count + "개 정리됨" : "정리할 내용 없음";
         if (m.actions != null && !error && !running) tail += " · " + m.actions.split("\n").length + "개 처리";
         TextView mt = tv((m.meeting() ? "회의 · " : "") + clock(m.created) + " · " + dur(m.duration) + " · " + tail, 13, error ? RED : T3, 0);
@@ -937,7 +1129,8 @@ public class MainActivity extends Activity {
         col.addView(mt);
         r.addView(col, weight());
 
-        r.setOnClickListener(v -> { if (error) reclassify(m); else memoSheet(m); });
+        boolean waitingRow = !running && "waiting".equals(m.status);
+        r.setOnClickListener(v -> { if (error) reclassify(m); else if (waitingRow) passSheet(); else memoSheet(m); });
         return r;
     }
 
@@ -1364,6 +1557,28 @@ public class MainActivity extends Activity {
         qh.setLineSpacing(dp(5), 1f);
         qh.setPadding(dp(4), dp(12), 0, 0);
         box.addView(qh);
+
+        // 이용권
+        box.addView(fieldLabel("정리 이용권"));
+        String est = Entitlement.unlimited(this) ? "테스트 모드: 제한 없이 정리"
+                : Entitlement.subscribed(this) ? "구독 중"
+                : Entitlement.passActive(this) ? new SimpleDateFormat("M월 d일 a h시", Locale.KOREAN).format(new Date(Entitlement.passUntil(this))) + "까지 사용 가능"
+                : "무료 정리 " + Entitlement.freeLeft(this) + "회 남음";
+        LinearLayout er = settingRow("내 이용권", est + " · 눌러서 이용권 받기");
+        er.setOnClickListener(v -> { ref[0].dismiss(); passSheet(); });
+        box.addView(er);
+        LinearLayout ur = settingRow("테스트: 제한 없이 쓰기", "출시 전 확인용이에요. 켜면 광고·횟수 제한 없이 정리돼요");
+        Switch usw = new Switch(this);
+        usw.setChecked(Entitlement.unlimited(this));
+        ur.addView(usw);
+        usw.setOnCheckedChangeListener((b, on) -> {
+            Entitlement.setUnlimited(this, on);
+            if (on) Classifier.retryWaiting(this);
+            refresh();
+        });
+        LinearLayout.LayoutParams ul = lp(-1, -2);
+        ul.topMargin = dp(8);
+        box.addView(ur, ul);
 
         box.addView(fieldLabel("나눌 목록 (쉼표로 구분, '기타'는 항상 마지막)"));
         EditText cats = input(Prefs.catsRaw(this), Prefs.DEFAULT_CATS);

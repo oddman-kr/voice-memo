@@ -45,6 +45,14 @@ public class Classifier {
             db.setStatus(id, "error", "녹음 파일이 없어요");
             return;
         }
+        int reserved = Entitlement.reserve(app);
+        if (reserved < 0) {
+            // 녹음은 그대로 두고 정리만 이용권이 생길 때까지 기다려요
+            db.setStatus(id, "waiting", null);
+            notifyWaiting(app);
+            return;
+        }
+        boolean ok = false;
         try {
             // 이 녹음에서 나온 항목은 빼고, 나머지 남은 항목을 AI에게 알려줘요 (말로 완료·수정용)
             List<Db.Item> open = new ArrayList<>();
@@ -81,12 +89,42 @@ public class Classifier {
                 }
             }
             Places.refreshSoon(app);
+            ok = true;
         } catch (java.net.UnknownHostException | java.net.SocketTimeoutException | java.net.ConnectException e) {
             db.setStatus(id, "error", "인터넷 연결을 확인해 주세요");
         } catch (Exception e) {
             String msg = e.getMessage();
             db.setStatus(id, "error", msg == null ? e.getClass().getSimpleName() : msg);
+        } finally {
+            if (!ok) Entitlement.refund(app, reserved);
         }
+    }
+
+    /** 앱이 꺼져 있을 때만 조용히 알려요 */
+    private static void notifyWaiting(Context app) {
+        if (UiBus.listener != null) return;
+        int n = 0;
+        for (Db.Memo m : Db.get(app).memos()) if ("waiting".equals(m.status)) n++;
+        android.app.NotificationManager nm = app.getSystemService(android.app.NotificationManager.class);
+        if (nm == null) return;
+        nm.createNotificationChannel(new android.app.NotificationChannel("waiting", "정리 대기", android.app.NotificationManager.IMPORTANCE_LOW));
+        android.app.PendingIntent pi = android.app.PendingIntent.getActivity(app, 700,
+                new android.content.Intent(app, MainActivity.class).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK | android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP),
+                android.app.PendingIntent.FLAG_IMMUTABLE | android.app.PendingIntent.FLAG_UPDATE_CURRENT);
+        android.app.Notification nt = new android.app.Notification.Builder(app, "waiting")
+                .setSmallIcon(R.drawable.ic_stat)
+                .setContentTitle("녹음 저장됨 · 정리 대기 " + n + "개")
+                .setContentText("앱을 열면 정리할 수 있어요")
+                .setContentIntent(pi)
+                .setAutoCancel(true)
+                .build();
+        try { nm.notify(700, nt); } catch (SecurityException ignored) { }
+    }
+
+    /** 대기 중인 녹음을 모두 다시 정리 시도 */
+    public static void retryWaiting(Context c) {
+        for (Db.Memo m : Db.get(c).memos())
+            if ("waiting".equals(m.status) || "pending".equals(m.status)) enqueue(c, m.id);
     }
 
     private static void line(StringBuilder sb, String kind, String text) {

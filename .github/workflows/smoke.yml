@@ -80,6 +80,16 @@ jobs:
           shot 07_settings2
           adb shell input keyevent 4
           sleep 1
+          python3 tap.py "설정"
+          sleep 2
+          python3 tap.py "내 이용권"
+          shot 08_pass_sheet
+          python3 tap.py "하루 동안 정리 무제한"
+          sleep 10
+          shot 09_ad
+          adb shell input keyevent 4
+          sleep 2
+          shot 10_after_ad
           adb logcat -d -b crash > crash.txt
           adb logcat -d | grep -E "AndroidRuntime|FATAL|System.err" | head -80 > app.txt
           echo "---- crash ----"; cat crash.txt; echo "---- app ----"; cat app.txt
