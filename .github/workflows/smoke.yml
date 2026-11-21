@@ -15,11 +15,17 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: 최신 APK 받기
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          url=$(curl -s https://api.github.com/repos/${{ github.repository }}/releases/latest | python3 -c "import json,sys;print(json.load(sys.stdin)['assets'][0]['browser_download_url'])")
+          for i in 1 2 3 4 5; do
+            url=$(curl -s -H "Authorization: Bearer $GH_TOKEN" https://api.github.com/repos/${{ github.repository }}/releases/latest | python3 -c "import json,sys;print(json.load(sys.stdin)['assets'][0]['browser_download_url'])" 2>/dev/null) && [ -n "$url" ] && break
+            sleep 15
+          done
           echo "$url"
           curl -sL -o app.apk "$url"
           ls -l app.apk
+          test -s app.apk
 
       - name: KVM 켜기
         run: |
