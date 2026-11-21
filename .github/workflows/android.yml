@@ -1,0 +1,55 @@
+name: 안드로이드 앱 빌드
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: APK 빌드
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle -p android assembleRelease --no-daemon 2>&1 | tee build.log
+
+      - name: 실패 원인 남기기
+        if: failure()
+        shell: bash
+        run: |
+          msg=$(grep -E -A12 "What went wrong|error:|FAILURE|e: " build.log | head -60 | sed 's/%/%25/g' | sed ':a;N;$!ba;s/\n/%0A/g')
+          echo "::error title=build-log::${msg}"
+
+      - name: 파일 이름 정리
+        run: cp android/app/build/outputs/apk/release/app-release.apk voicememo-v1.0.${{ github.run_number }}.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: voicememo-v1.0.${{ github.run_number }}-apk
+          path: voicememo-v1.0.${{ github.run_number }}.apk
+
+      - name: 다운로드 페이지(Release)에 올리기
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: app-v${{ github.run_number }}
+          name: 음성 메모 1.0.${{ github.run_number }}
+          body: |
+            안드로이드용 설치 파일입니다. voicememo-v1.0.${{ github.run_number }}.apk를 눌러 내려받아 설치하세요.
+            이전 버전 위에 그대로 덮어 설치하면 녹음이 유지됩니다.
+          files: voicememo-v1.0.${{ github.run_number }}.apk
