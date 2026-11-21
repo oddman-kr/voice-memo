@@ -12,7 +12,6 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.Gravity;
-import android.view.ViewGroup;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -38,7 +37,7 @@ public class RecordActivity extends Activity {
                 long s = (System.currentTimeMillis() - RecordService.startedAt) / 1000;
                 long left = RecordService.MAX_MS / 1000 - s;
                 timer.setText(String.format(Locale.ROOT, "%d:%02d", s / 60, s % 60));
-                if (left <= 15) timer.setTextColor(0xFFE5484D);
+                if (left <= 15) timer.setTextColor(0xFFFF5A4E);
             } else if (sawRecording || System.currentTimeMillis() - openedAt > 4000) {
                 finish();
                 return;
@@ -105,58 +104,65 @@ public class RecordActivity extends Activity {
     }
 
     private void buildUi() {
+        int bg = 0xFF0E0E10;
+        getWindow().setStatusBarColor(bg);
+        getWindow().setNavigationBarColor(bg);
+
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setGravity(Gravity.CENTER_HORIZONTAL);
-        root.setPadding(dp(24), dp(24), dp(24), dp(16));
+        root.setBackgroundColor(bg);
+        root.setFitsSystemWindows(true);
+        root.setPadding(dp(24), dp(48), dp(24), dp(28));
 
         TextView title = new TextView(this);
-        title.setText("● 녹음 중");
-        title.setTextColor(0xFFE5484D);
-        title.setTextSize(16);
-        title.setTypeface(Typeface.DEFAULT_BOLD);
+        title.setText("● 듣고 있어요");
+        title.setTextColor(0xFFFF5A4E);
+        title.setTextSize(15);
+        title.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         root.addView(title);
 
         timer = new TextView(this);
         timer.setText("0:00");
-        timer.setTextColor(0xFF1C1E21);
-        timer.setTextSize(44);
+        timer.setTextColor(Color.WHITE);
+        timer.setTextSize(60);
         timer.setTypeface(Typeface.create("sans-serif-light", Typeface.NORMAL));
-        timer.setPadding(0, dp(6), 0, dp(2));
+        timer.setPadding(0, dp(6), 0, 0);
         root.addView(timer);
 
         TextView hint = new TextView(this);
-        hint.setText("말을 마치면 저장을 눌러 주세요 (최대 3분)\n위젯을 한 번 더 눌러도 저장돼요");
-        hint.setTextColor(0xFF8A8F98);
-        hint.setTextSize(13);
+        hint.setText("살 것, 할 일, 보낼 돈을 편하게 말해 주세요");
+        hint.setTextColor(0x99FFFFFF);
+        hint.setTextSize(14);
         hint.setGravity(Gravity.CENTER);
         root.addView(hint);
 
-        TextView save = new TextView(this);
-        save.setText("저장");
-        save.setTextColor(Color.WHITE);
-        save.setTextSize(20);
-        save.setTypeface(Typeface.DEFAULT_BOLD);
-        save.setGravity(Gravity.CENTER);
-        GradientDrawable g = new GradientDrawable();
-        g.setShape(GradientDrawable.OVAL);
-        g.setColor(0xFFE5484D);
-        save.setBackground(g);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(96), dp(96));
-        lp.topMargin = dp(20);
-        save.setOnClickListener(v -> { send(RecordService.ACT_STOP); finish(); });
-        root.addView(save, lp);
+        PulseView pulse = new PulseView(this);
+        pulse.setOnClickListener(v -> { send(RecordService.ACT_STOP); finish(); });
+        pulse.setContentDescription("저장");
+        root.addView(pulse, new LinearLayout.LayoutParams(-1, 0, 1));
+
+        TextView tap = new TextView(this);
+        tap.setText("가운데를 누르면 저장돼요 · 최대 3분");
+        tap.setTextColor(0x99FFFFFF);
+        tap.setTextSize(13);
+        root.addView(tap);
 
         TextView cancel = new TextView(this);
         cancel.setText("취소");
-        cancel.setTextColor(0xFF8A8F98);
+        cancel.setTextColor(Color.WHITE);
         cancel.setTextSize(15);
-        cancel.setPadding(dp(20), dp(14), dp(20), dp(6));
+        cancel.setGravity(Gravity.CENTER);
+        GradientDrawable g = new GradientDrawable();
+        g.setColor(0x1AFFFFFF);
+        g.setCornerRadius(dp(24));
+        cancel.setBackground(g);
         cancel.setOnClickListener(v -> { send(RecordService.ACT_CANCEL); finish(); });
-        root.addView(cancel);
+        LinearLayout.LayoutParams cl = new LinearLayout.LayoutParams(dp(120), dp(48));
+        cl.topMargin = dp(18);
+        root.addView(cancel, cl);
 
         setContentView(root);
-        getWindow().setLayout(dp(300), ViewGroup.LayoutParams.WRAP_CONTENT);
     }
 
     @Override

@@ -28,7 +28,7 @@
             android:excludeFromRecents="true"
             android:launchMode="singleTask"
             android:taskAffinity="kr.oddman.voicememo.rec"
-            android:theme="@android:style/Theme.Material.Light.Dialog.NoActionBar" />
+            android:theme="@android:style/Theme.Material.NoActionBar" />
 
         <service
             android:name=".RecordService"

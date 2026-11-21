@@ -25,7 +25,21 @@ public class RecordService extends Service {
     public static volatile boolean recording = false;
     public static volatile long startedAt = 0;
 
-    private MediaRecorder rec;
+    private static volatile MediaRecorder rec;
+
+    /** 0..1 마이크 소리 크기 (녹음 화면 애니메이션용) */
+    public static float level() {
+        MediaRecorder r = rec;
+        if (r == null || !recording) return 0f;
+        try {
+            int a = r.getMaxAmplitude();
+            if (a <= 0) return 0f;
+            double db = 20 * Math.log10(a / 32767.0);
+            return (float) Math.max(0, Math.min(1, (db + 45) / 45));
+        } catch (Exception e) {
+            return 0f;
+        }
+    }
     private File file;
     private final Handler h = new Handler(Looper.getMainLooper());
     private final Runnable autoStop = () -> finishRec(true);
@@ -86,16 +100,17 @@ public class RecordService extends Service {
             File dir = new File(getFilesDir(), "memos");
             dir.mkdirs();
             file = new File(dir, "memo_" + System.currentTimeMillis() + ".aac");
-            rec = Build.VERSION.SDK_INT >= 31 ? new MediaRecorder(this) : new MediaRecorder();
-            rec.setAudioSource(MediaRecorder.AudioSource.MIC);
-            rec.setOutputFormat(MediaRecorder.OutputFormat.AAC_ADTS);
-            rec.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
-            rec.setAudioChannels(1);
-            rec.setAudioSamplingRate(16000);
-            rec.setAudioEncodingBitRate(32000);
-            rec.setOutputFile(file.getAbsolutePath());
-            rec.prepare();
-            rec.start();
+            MediaRecorder r = Build.VERSION.SDK_INT >= 31 ? new MediaRecorder(this) : new MediaRecorder();
+            rec = r;
+            r.setAudioSource(MediaRecorder.AudioSource.MIC);
+            r.setOutputFormat(MediaRecorder.OutputFormat.AAC_ADTS);
+            r.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
+            r.setAudioChannels(1);
+            r.setAudioSamplingRate(16000);
+            r.setAudioEncodingBitRate(32000);
+            r.setOutputFile(file.getAbsolutePath());
+            r.prepare();
+            r.start();
             startedAt = System.currentTimeMillis();
             recording = true;
             h.postDelayed(autoStop, MAX_MS);
@@ -110,9 +125,10 @@ public class RecordService extends Service {
     }
 
     private void releaseRec() {
-        if (rec != null) {
-            try { rec.release(); } catch (Exception ignored) { }
-            rec = null;
+        MediaRecorder r = rec;
+        rec = null;
+        if (r != null) {
+            try { r.release(); } catch (Exception ignored) { }
         }
     }
 

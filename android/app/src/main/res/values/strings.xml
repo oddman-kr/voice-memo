@@ -2,5 +2,5 @@
 <resources>
     <string name="app_name">음성 메모</string>
     <string name="widget_name">원탭 녹음</string>
-    <color name="icon_bg">#2F6BFF</color>
+    <color name="icon_bg">#17171A</color>
 </resources>
